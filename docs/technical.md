@@ -121,7 +121,7 @@ Memory Storage → User Display
 
 Dialog Entry → STM Storage → Analytics Update → 
 Periodic Cleanup → LTM Archival
-```Model Selection Process
+Model Selection Process
 
 Provider Selection → API Validation → Model Availability Check →
 Model Initialization → System Prompt Integration →
