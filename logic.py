@@ -113,7 +113,6 @@ class ConfidenceScoring:
             "reliability_indicators": []
         }
         
-        # Calculate scores for each major factor
         for factor, config in ConfidenceScoring.CONFIDENCE_FACTORS.items():
             factor_score = ConfidenceScoring._calculate_factor_score(
                 validation_data, 
@@ -123,15 +122,10 @@ class ConfidenceScoring:
             confidence_result["factor_scores"][factor] = factor_score
             confidence_result["overall_confidence"] += factor_score * config["weight"]
 
-        confidence_result["overall_confidence"] = round(
-            confidence_result["overall_confidence"], 
-            3
-        )
-        
+        confidence_result["overall_confidence"] = round(confidence_result["overall_confidence"], 3)
         confidence_result["confidence_level"] = ConfidenceScoring._get_confidence_level(
             confidence_result["overall_confidence"]
         )
-        
         confidence_result["reliability_indicators"] = ConfidenceScoring._get_reliability_indicators(
             confidence_result["factor_scores"],
             validation_data
@@ -143,15 +137,9 @@ class ConfidenceScoring:
     def _calculate_factor_score(validation_data: Dict, factor: str, config: Dict) -> float:
         """Calculate score for individual confidence factor"""
         component_scores = {}
-        
         for component, weight in config["components"].items():
-            score = ConfidenceScoring._evaluate_component(
-                validation_data, 
-                factor, 
-                component
-            )
+            score = ConfidenceScoring._evaluate_component(validation_data, factor, component)
             component_scores[component] = score * weight
-
         return sum(component_scores.values())
 
     @staticmethod
@@ -164,6 +152,27 @@ class ConfidenceScoring:
                 return ConfidenceScoring._evaluate_patterns(validation_data)
             elif component == "context_relevance":
                 return ConfidenceScoring._evaluate_context(validation_data)
+        return 0.5
+
+    @staticmethod
+    def _evaluate_terminology(validation_data: Dict) -> float:
+        """Evaluate medical terminology usage"""
+        if "medical_terms" in validation_data:
+            return len(validation_data["medical_terms"]) / 10.0  # Normalize to 0-1
+        return 0.0
+
+    @staticmethod
+    def _evaluate_patterns(validation_data: Dict) -> float:
+        """Evaluate medical pattern matches"""
+        if "patterns_identified" in validation_data:
+            return len(validation_data["patterns_identified"]) / 5.0  # Normalize to 0-1
+        return 0.0
+
+    @staticmethod
+    def _evaluate_context(validation_data: Dict) -> float:
+        """Evaluate medical context relevance"""
+        if "context_score" in validation_data:
+            return validation_data["context_score"]
         return 0.5
 
     @staticmethod
@@ -184,7 +193,6 @@ class ConfidenceScoring:
     def _get_reliability_indicators(factor_scores: Dict, validation_data: Dict) -> List[str]:
         """Generate reliability indicators"""
         indicators = []
-        
         for factor, score in factor_scores.items():
             if score < 0.5:
                 indicators.append(f"Low {factor.replace('_', ' ')} confidence")
@@ -199,11 +207,9 @@ class ConfidenceScoring:
             indicators.append("Emergency indicators present")
 
         return indicators
-      class LogicTables:
-    """
-    Enhanced logic system for medical reasoning and decision validation
-    Implements comprehensive medical context validation and relationship tracking
-    """
+
+class LogicTables:
+    """Enhanced logic system for medical reasoning and decision validation"""
     
     def __init__(self):
         self.logger = logging.getLogger('LogicTables')
@@ -224,253 +230,99 @@ class ConfidenceScoring:
         self.setup_logging()
 
     def setup_logging(self):
-        """Initialize comprehensive logging system"""
+        """Initialize logging system"""
         log_dir = './memory/logs'
-        medical_log_dir = os.path.join(log_dir, 'medical')
-        os.makedirs(medical_log_dir, exist_ok=True)
+        os.makedirs(log_dir, exist_ok=True)
         
-        # Configure handlers
-        handlers = {
-            'main': logging.FileHandler(f'{log_dir}/logic.log'),
-            'medical': logging.FileHandler(f'{medical_log_dir}/medical_reasoning.log'),
-            'patterns': logging.FileHandler(f'{medical_log_dir}/pattern_analysis.log'),
-            'validation': logging.FileHandler(f'{medical_log_dir}/validation.log')
-        }
-        
+        handler = logging.FileHandler(f'{log_dir}/logic.log')
         formatter = logging.Formatter('%(asctime)s - %(name)s - %(levelname)s - %(message)s')
-        for handler in handlers.values():
-            handler.setFormatter(formatter)
-            self.logger.addHandler(handler)
-        
+        handler.setFormatter(formatter)
+        self.logger.addHandler(handler)
         self.logger.setLevel(logging.DEBUG)
 
-    def analyze_statement(self, statement: str) -> Dict:
-        """Comprehensive medical statement analysis"""
-        try:
-            analysis = {
-                "timestamp": datetime.now().isoformat(),
-                "original_statement": statement,
-                "patterns_identified": self._identify_patterns(statement),
-                "medical_context": self._validate_medical_context(statement),
-                "logical_structure": self._check_logical_structure(statement),
-                "contradictions": self._check_contradictions(statement),
-                "relationships": self._analyze_medical_relationships(statement),
-                "severity": self._determine_severity(statement),
-                "emergency_indicators": self._check_emergency_indicators(statement)
-            }
-            
-            # Calculate confidence with enhanced scoring
-            analysis["confidence"] = self.confidence_scorer.calculate_confidence(analysis)
-            
-            # Add reasoning chain
-            analysis["reasoning_chain"] = self._generate_reasoning_chain(analysis)
-            
-            self._log_analysis(analysis)
-            return analysis
-            
-        except Exception as e:
-            self.logger.error(f"Error analyzing statement: {e}")
-            return {"error": str(e)}
+    def tautology(self, statement: str) -> bool:
+        """Validate if a statement is logically sound"""
+        if not statement or not isinstance(statement, str):
+            return False
 
-    def _identify_patterns(self, statement: str) -> Dict:
-        """Enhanced pattern recognition"""
-        return {
-            "temporal": self._identify_temporal_patterns(statement),
-            "severity": self._identify_severity_patterns(statement),
-            "quality": self._identify_quality_patterns(statement),
-            "location": self._identify_location_patterns(statement),
-            "condition": self._identify_condition_patterns(statement),
-            "treatment": self._identify_treatment_patterns(statement),
-            "risk_factors": self._identify_risk_patterns(statement)
-        }
+        has_context = len(statement.split()) > 3
+        has_medical_terms = self._contains_medical_terms(statement)
+        has_logical_structure = self._check_logical_structure(statement)
 
-    def _validate_medical_context(self, statement: str) -> Dict:
-        """Validate medical context with detailed analysis"""
-        context_analysis = {
-            "has_medical_terms": False,
-            "has_medical_patterns": False,
-            "identified_terms": [],
-            "context_score": 0.0,
-            "context_type": "unknown"
-        }
-        
-        # Check medical terminology
-        medical_terms = self._extract_medical_terms(statement)
-        context_analysis["has_medical_terms"] = bool(medical_terms)
-        context_analysis["identified_terms"] = medical_terms
-        
-        # Check medical patterns
-        pattern_matches = []
-        for pattern_type, patterns in self.patterns.SYMPTOM_PATTERNS.items():
-            for category, terms in patterns.items():
-                if any(term in statement.lower() for term in terms):
-                    pattern_matches.append(f"{pattern_type}:{category}")
-        
-        context_analysis["has_medical_patterns"] = bool(pattern_matches)
-        context_analysis["identified_patterns"] = pattern_matches
-        
-        # Calculate context score
-        context_analysis["context_score"] = self._calculate_context_score(
-            context_analysis["has_medical_terms"],
-            context_analysis["has_medical_patterns"],
-            len(medical_terms),
-            len(pattern_matches)
-        )
-        
-        # Determine context type
-        context_analysis["context_type"] = self._determine_context_type(
-            medical_terms,
-            pattern_matches
-        )
-        
-        return context_analysis
+        return has_context and has_medical_terms and has_logical_structure
 
-    def _check_contradictions(self, statement: str) -> List[Dict]:
-        """Check for medical contradictions with detailed analysis"""
-        contradictions = []
-        
-        # Check against existing truths
-        for truth in self.valid_truths:
-            if self._are_contradictory(statement, truth):
-                contradictions.append({
-                    "type": "truth_contradiction",
-                    "statement": statement,
-                    "contradicts": truth,
-                    "reason": self._analyze_contradiction(statement, truth)
-                })
-        
-        # Check internal consistency
-        internal_contradictions = self._check_internal_contradictions(statement)
-        if internal_contradictions:
-            contradictions.extend(internal_contradictions)
-        
-        # Check against medical knowledge base
-        kb_contradictions = self._check_knowledge_base_contradictions(statement)
-        if kb_contradictions:
-            contradictions.extend(kb_contradictions)
-        
-        return contradictions
+    def _contains_medical_terms(self, statement: str) -> bool:
+        """Check if statement contains recognized medical terminology"""
+        medical_terms = set(self.medical_conditions.keys())
+        statement_words = set(statement.lower().split())
+        return bool(medical_terms.intersection(statement_words))
 
-    def _analyze_medical_relationships(self, statement: str) -> Dict:
-        """Analyze medical relationships and correlations"""
-        analysis = {
-            "symptoms": [],
-            "conditions": [],
-            "relationships": [],
-            "correlations": [],
+    def _check_logical_structure(self, statement: str) -> bool:
+        """Check if statement has valid logical structure"""
+        logical_indicators = ['if', 'then', 'because', 'therefore', 'due to', 'causes']
+        return any(indicator in statement.lower() for indicator in logical_indicators)
+
+    def unify_variables(self, statement1: str, statement2: str) -> bool:
+        """Check if two statements are logically equivalent"""
+        if not statement1 or not statement2:
+            return False
+
+        norm1 = self._normalize_statement(statement1)
+        norm2 = self._normalize_statement(statement2)
+
+        if norm1 == norm2:
+            return True
+
+        return self._check_semantic_similarity(norm1, norm2)
+
+    def _normalize_statement(self, statement: str) -> str:
+        """Normalize statement for comparison"""
+        return statement.lower().strip()
+
+    def _check_semantic_similarity(self, stmt1: str, stmt2: str) -> bool:
+        """Check if statements are semantically similar"""
+        words1 = set(stmt1.split())
+        words2 = set(stmt2.split())
+        
+        overlap = words1.intersection(words2)
+        total_words = words1.union(words2)
+        
+        similarity_ratio = len(overlap) / len(total_words) if total_words else 0
+        return similarity_ratio > 0.7
+
+    def validate_conclusion(self, conclusion: str, premises: List[str]) -> Dict[str, Union[bool, str, float]]:
+        """Validate a medical conclusion based on premises"""
+        validation = {
+            "valid": False,
+            "reason": "",
             "confidence": 0.0
         }
-        
-        # Extract symptoms and conditions
-        symptoms, conditions = self._extract_medical_entities(statement)
-        analysis["symptoms"] = symptoms
-        analysis["conditions"] = conditions
-        
-        # Analyze relationships
-        for symptom in symptoms:
-            for condition in conditions:
-                relationship = self._analyze_symptom_condition_relationship(
-                    symptom,
-                    condition
-                )
-                if relationship:
-                    analysis["relationships"].append(relationship)
-        
-        # Calculate correlations
-        analysis["correlations"] = self._calculate_medical_correlations(
-            symptoms,
-            conditions
-        )
-        
-        # Calculate confidence
-        analysis["confidence"] = self._calculate_relationship_confidence(
-            analysis["relationships"],
-            analysis["correlations"]
-        )
-        
-        return analysis
 
-    def _generate_reasoning_chain(self, analysis: Dict) -> List[Dict]:
-        """Generate medical reasoning chain"""
-        reasoning_chain = []
-        
-        # Add context reasoning
-        if analysis["medical_context"]["has_medical_terms"]:
-            reasoning_chain.append({
-                "step": "context",
-                "reasoning": "Medical context identified based on terminology",
-                "confidence": analysis["medical_context"]["context_score"]
-            })
-        
-        # Add pattern reasoning
-        if analysis["patterns_identified"]:
-            reasoning_chain.append({
-                "step": "patterns",
-                "reasoning": "Medical patterns detected in statement",
-                "patterns": analysis["patterns_identified"]
-            })
-        
-        # Add relationship reasoning
-        if analysis["relationships"]["relationships"]:
-            reasoning_chain.append({
-                "step": "relationships",
-                "reasoning": "Medical relationships identified",
-                "relationships": analysis["relationships"]["relationships"]
-            })
-        
-        # Add contradiction reasoning
-        if analysis["contradictions"]:
-            reasoning_chain.append({
-                "step": "contradictions",
-                "reasoning": "Contradictions found in statement",
-                "contradictions": analysis["contradictions"]
-            })
-        
-        return reasoning_chain
+        if not conclusion or not premises:
+            validation["reason"] = "Missing conclusion or premises"
+            return validation
 
-    def _log_analysis(self, analysis: Dict):
-        """Log comprehensive analysis results"""
-        log_entry = {
-            "timestamp": analysis["timestamp"],
-            "statement": analysis["original_statement"],
-            "analysis_results": {
-                "patterns": analysis["patterns_identified"],
-                "context": analysis["medical_context"],
-                "relationships": analysis["relationships"],
-                "contradictions": analysis["contradictions"],
-                "confidence": analysis["confidence"]
-            },
-            "reasoning_chain": analysis["reasoning_chain"]
-        }
-        
-        try:
-            # Log to pattern analysis file
-            with open('./memory/logs/medical/pattern_analysis.json', 'a+') as f:
-                self._append_to_json_log(f, log_entry)
-            
-            # Log to medical reasoning file
-            with open('./memory/logs/medical/medical_reasoning.json', 'a+') as f:
-                self._append_to_json_log(f, log_entry)
-                
-            self.logger.info(f"Analysis logged successfully for statement: {analysis['original_statement'][:50]}...")
-            
-        except Exception as e:
-            self.logger.error(f"Error logging analysis: {e}")
+        if self.tautology(conclusion):
+            validation["valid"] = True
+            validation["confidence"] = self._calculate_confidence(conclusion, premises)
+            validation["reason"] = "Logically sound conclusion"
+        else:
+            validation["reason"] = "Invalid logical structure"
 
-    def _append_to_json_log(self, file_handle, entry: Dict):
-        """Append entry to JSON log file"""
-        file_handle.seek(0)
-        try:
-            logs = json.load(file_handle)
-        except json.JSONDecodeError:
-            logs = []
-        
-        logs.append(entry)
-        file_handle.seek(0)
-        file_handle.truncate()
-        json.dump(logs, file_handle, indent=2)
+        return validation
 
-    # Helper methods for loading and saving data
+    def _calculate_confidence(self, conclusion: str, premises: List[str]) -> float:
+        """Calculate confidence score for conclusion"""
+        if not conclusion or not premises:
+            return 0.0
+
+        premise_factor = min(len(premises) / 3, 1.0)
+        logic_factor = 1.0 if self._check_logical_structure(conclusion) else 0.5
+        medical_factor = 1.0 if self._contains_medical_terms(conclusion) else 0.7
+
+        confidence = (premise_factor + logic_factor + medical_factor) / 3
+        return round(confidence, 2)
+
     def _load_medical_conditions(self) -> Dict:
         """Load medical conditions database"""
         try:
@@ -495,8 +347,8 @@ class ConfidenceScoring:
         except FileNotFoundError:
             return self._create_default_symptom_patterns()
 
-    # Default data creation methods
     def _create_default_medical_conditions(self) -> Dict:
+        """Create default medical conditions structure"""
         return {
             "general": {
                 "requires_professional": True,
@@ -508,6 +360,7 @@ class ConfidenceScoring:
         }
 
     def _create_default_medical_terminology(self) -> Dict:
+        """Create default medical terminology structure"""
         return {
             "symptoms": {},
             "conditions": {},
@@ -516,6 +369,7 @@ class ConfidenceScoring:
         }
 
     def _create_default_symptom_patterns(self) -> Dict:
+        """Create default symptom patterns structure"""
         return {
             "acute": [],
             "chronic": [],

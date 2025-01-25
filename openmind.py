@@ -6,76 +6,139 @@ import httpx
 import asyncio
 import json
 from datetime import datetime
-from typing import Dict, List, Optional, Union
+from typing import Dict, List, Optional, Union, Any
 from dotenv import load_dotenv, set_key
-from memory import create_memory_folders, store_in_stm, DialogEntry
 
 class OpenMind:
     """
     Enhanced OpenMind system for managing API keys, models, and medical AI interactions
-    Integrates with drAIML for comprehensive medical consultation management
+    with comprehensive error logging and file handling
     """
     
     def __init__(self):
         self.env_file = '.env'
-        self.api_keys = self._load_env()
+        self.api_keys = {}  # Initialize empty and load through method
         self.agi_instance = None
         self.initialization_warning_shown = False
-        self.logger = self._setup_logger()
-        self.message_container = None
-        self.internal_queue = asyncio.Queue()
-        self.prompt = ""
         
         # Initialize memory structure
-        self.memory_paths = {
-            'logs': './memory/logs',
-            'medical': './memory/medical',
-            'api': './memory/api',
-            'models': './memory/models',
-            'stm': './memory/stm',
-            'ltm': './memory/ltm'
+        self.memory_structure = {
+            'root': './memory',
+            'folders': {
+                'logs': './memory/logs',
+                'medical': './memory/medical',
+                'api': './memory/api',
+                'models': './memory/models',
+                'stm': './memory/stm',
+                'ltm': './memory/ltm',
+                'errors': './memory/logs/errors'
+            }
         }
-        self._initialize_memory()
+        
+        try:
+            # Create directories first
+            self._initialize_memory()
+            # Setup logging after directories exist
+            self.logger = self._setup_logger()
+            # Load API keys after logging is setup
+            self.api_keys = self._load_env()
+        except Exception as e:
+            print(f"Critical initialization error: {e}")
+            raise
 
     def _setup_logger(self) -> logging.Logger:
         """Initialize comprehensive logging system"""
         logger = logging.getLogger('OpenMind')
         logger.setLevel(logging.DEBUG)
 
-        # Create handlers
-        for path in self.memory_paths.values():
-            os.makedirs(path, exist_ok=True)
+        # Ensure log directory exists
+        log_dir = self.memory_structure['folders']['logs']
+        error_dir = self.memory_structure['folders']['errors']
+        os.makedirs(log_dir, exist_ok=True)
+        os.makedirs(error_dir, exist_ok=True)
 
+        # Create formatters
+        detailed_formatter = logging.Formatter(
+            '%(asctime)s - %(name)s - %(levelname)s - %(filename)s:%(lineno)d - %(message)s'
+        )
+        simple_formatter = logging.Formatter('%(asctime)s - %(levelname)s - %(message)s')
+
+        # File handlers
         handlers = {
-            'file': logging.FileHandler('./memory/logs/openmind.log'),
-            'api': logging.FileHandler('./memory/logs/api.log'),
-            'model': logging.FileHandler('./memory/logs/model.log'),
-            'medical': logging.FileHandler('./memory/logs/medical.log'),
+            'debug_file': logging.FileHandler(os.path.join(log_dir, 'debug.log')),
+            'error_file': logging.FileHandler(os.path.join(error_dir, 'error.log')),
+            'api_file': logging.FileHandler(os.path.join(log_dir, 'api.log')),
             'stream': logging.StreamHandler()
         }
 
-        formatter = logging.Formatter('%(asctime)s - %(name)s - %(levelname)s - %(message)s')
+        # Configure handlers
+        handlers['debug_file'].setLevel(logging.DEBUG)
+        handlers['error_file'].setLevel(logging.ERROR)
+        handlers['api_file'].setLevel(logging.INFO)
+        handlers['stream'].setLevel(logging.INFO)
 
+        # Set formatters
+        handlers['debug_file'].setFormatter(detailed_formatter)
+        handlers['error_file'].setFormatter(detailed_formatter)
+        handlers['api_file'].setFormatter(simple_formatter)
+        handlers['stream'].setFormatter(simple_formatter)
+
+        # Add handlers to logger
         for handler in handlers.values():
-            handler.setFormatter(formatter)
             logger.addHandler(handler)
 
         return logger
 
     def _initialize_memory(self):
-        """Initialize memory structure and create necessary folders"""
-        create_memory_folders()
-        for path in self.memory_paths.values():
-            os.makedirs(path, exist_ok=True)
+        """Initialize memory structure"""
+        try:
+            for folder in self.memory_structure['folders'].values():
+                os.makedirs(folder, exist_ok=True)
+        except Exception as e:
+            raise Exception(f"Failed to create memory structure: {e}")
 
     def _load_env(self) -> Dict[str, str]:
         """Load API keys from environment file"""
-        load_dotenv(self.env_file)
-        return {
-            'together': os.getenv('TOGETHER_API_KEY'),
-            'groq': os.getenv('GROQ_API_KEY'),
-            'openai': os.getenv('OPENAI_API_KEY')
-        }
+        try:
+            load_dotenv(self.env_file)
+            keys = {
+                'together': os.getenv('TOGETHER_API_KEY'),
+                'groq': os.getenv('GROQ_API_KEY'),
+                'openai': os.getenv('OPENAI_API_KEY')
+            }
+            self.logger.debug(f"Loaded API keys for services: {', '.join(k for k, v in keys.items() if v)}")
+            return keys
+        except Exception as e:
+            self.logger.error(f"Error loading environment variables: {e}")
+            return {}
+
+    def load_oath(self) -> Optional[str]:
+        """Load Dr. AIML's oath from oath.txt"""
+        try:
+            with open("oath.txt", "r", encoding="utf-8") as f:
+                oath_text = f.read()
+                self.logger.debug("Successfully loaded oath.txt")
+                return oath_text
+        except FileNotFoundError:
+            self.logger.error("oath.txt not found in current directory")
+            return None
+        except Exception as e:
+            self.logger.error(f"Error loading oath.txt: {e}")
+            return None
+
+    def load_prompt(self) -> Optional[str]:
+        """Load Dr. AIML's prompt from prompt.txt"""
+        try:
+            with open("prompt.txt", "r", encoding="utf-8") as f:
+                prompt_text = f.read()
+                self.logger.debug("Successfully loaded prompt.txt")
+                return prompt_text
+        except FileNotFoundError:
+            self.logger.error("prompt.txt not found in current directory")
+            return None
+        except Exception as e:
+            self.logger.error(f"Error loading prompt.txt: {e}")
+            return None
 
     def save_api_key(self, service: str, key: str):
         """Save API key to environment file and update current session"""
@@ -93,16 +156,16 @@ class OpenMind:
             self.logger.info(f"API key updated for service: {service}")
             self._log_api_change(service, "key_updated")
             
-            # Initialize AGI if needed
-            self.initialize_agi()
-            
         except Exception as e:
             self.logger.error(f"Error saving API key for {service}: {e}")
             raise
 
     def get_api_key(self, service: str) -> Optional[str]:
         """Get API key for specified service"""
-        return self.api_keys.get(service.lower())
+        key = self.api_keys.get(service.lower())
+        if not key:
+            self.logger.warning(f"No API key found for service: {service}")
+        return key
 
     def remove_api_key(self, service: str):
         """Remove API key for specified service"""
@@ -124,161 +187,6 @@ class OpenMind:
             self.logger.error(f"Error removing API key for {service}: {e}")
             raise
 
-    async def initialize_agi(self):
-        """Initialize AGI system with appropriate model"""
-        try:
-            # Check available models
-            model_status = self.get_model_status()
-            
-            # Try to initialize in order of preference
-            for service in ['openai', 'groq', 'together', 'ollama']:
-                if model_status[service]['available']:
-                    self.agi_instance = await self._initialize_model(service)
-                    if self.agi_instance:
-                        self.logger.info(f"AGI initialized with {service}")
-                        return True
-            
-            if not self.initialization_warning_shown:
-                self.logger.warning("No valid API key or model found")
-                self.initialization_warning_shown = True
-            
-            return False
-            
-        except Exception as e:
-            self.logger.error(f"Error initializing AGI: {e}")
-            return False
-
-    async def _initialize_model(self, service: str):
-        """Initialize specific model based on service"""
-        try:
-            if service == 'ollama':
-                if self._check_ollama_running():
-                    from chatter import OllamaHandler
-                    return OllamaHandler()
-            else:
-                api_key = self.get_api_key(service)
-                if api_key:
-                    if service == 'openai':
-                        from chatter import GPT4o
-                        return GPT4o(api_key)
-                    elif service == 'groq':
-                        from chatter import GroqModel
-                        return GroqModel(api_key)
-                    elif service == 'together':
-                        from chatter import TogetherModel
-                        return TogetherModel(api_key)
-            return None
-        except Exception as e:
-            self.logger.error(f"Error initializing {service} model: {e}")
-            return None
-
-    async def process_medical_query(self, query: str) -> Dict:
-        """Process medical query and generate response"""
-        try:
-            if not self.agi_instance:
-                await self.initialize_agi()
-                
-            if not self.agi_instance:
-                return {"error": "No available AI model"}
-
-            # Process query
-            response = await self.agi_instance.generate_response(query)
-            
-            # Store interaction
-            dialog_entry = DialogEntry(query, response)
-            store_in_stm(dialog_entry)
-            
-            # Log interaction
-            self._log_medical_interaction(query, response)
-            
-            return {
-                "query": query,
-                "response": response,
-                "timestamp": datetime.now().isoformat()
-            }
-            
-        except Exception as e:
-            self.logger.error(f"Error processing medical query: {e}")
-            return {"error": str(e)}
-
-    def _log_medical_interaction(self, query: str, response: str):
-        """Log medical interaction"""
-        try:
-            log_entry = {
-                "timestamp": datetime.now().isoformat(),
-                "query": query,
-                "response": response,
-                "model": type(self.agi_instance).__name__
-            }
-            
-            log_file = os.path.join(self.memory_paths['medical'], 'interactions.json')
-            self._append_to_json_log(log_file, log_entry)
-            
-        except Exception as e:
-            self.logger.error(f"Error logging medical interaction: {e}")
-
-    def _check_ollama_running(self) -> bool:
-        """Check if Ollama is running"""
-        try:
-            response = httpx.get('http://localhost:11434')
-            return response.status_code == 200
-        except Exception:
-            return False
-
-    def get_model_status(self) -> Dict[str, Dict]:
-        """Get status of all configured models"""
-        status = {}
-        for service in ['together', 'groq', 'openai', 'ollama']:
-            status[service] = self.check_model_availability(service)
-        return status
-
-    def check_model_availability(self, model_name: str) -> Dict[str, Union[bool, str]]:
-        """Check if a specific model is available"""
-        result = {
-            "available": False,
-            "status": "",
-            "error": None
-        }
-        
-        try:
-            if model_name.lower() == "ollama":
-                result["available"] = self._check_ollama_running()
-                result["status"] = "running" if result["available"] else "not running"
-            else:
-                api_key = self.get_api_key(model_name.lower())
-                result["available"] = bool(api_key)
-                result["status"] = "configured" if result["available"] else "no api key"
-                
-        except Exception as e:
-            result["error"] = str(e)
-            self.logger.error(f"Error checking model availability for {model_name}: {e}")
-            
-        return result
-
-    def load_oath(self) -> Optional[str]:
-        """Load Dr. AIML's oath"""
-        try:
-            with open("oath.txt", "r", encoding="utf-8") as f:
-                return f.read()
-        except FileNotFoundError:
-            self.logger.error("oath.txt not found")
-            return None
-        except Exception as e:
-            self.logger.error(f"Error loading oath: {e}")
-            return None
-
-    def load_prompt(self) -> Optional[str]:
-        """Load Dr. AIML's prompt"""
-        try:
-            with open("prompt.txt", "r", encoding="utf-8") as f:
-                return f.read()
-        except FileNotFoundError:
-            self.logger.error("prompt.txt not found")
-            return None
-        except Exception as e:
-            self.logger.error(f"Error loading prompt: {e}")
-            return None
-
     def _log_api_change(self, service: str, action: str):
         """Log API key changes"""
         try:
@@ -288,7 +196,7 @@ class OpenMind:
                 "action": action
             }
             
-            log_file = os.path.join(self.memory_paths['api'], 'api_changes.json')
+            log_file = os.path.join(self.memory_structure['folders']['api'], 'api_changes.json')
             self._append_to_json_log(log_file, log_entry)
             
         except Exception as e:
@@ -302,6 +210,7 @@ class OpenMind:
                     try:
                         data = json.load(f)
                     except json.JSONDecodeError:
+                        self.logger.warning(f"Invalid JSON in {filepath}, starting new log")
                         data = []
                     data.append(entry)
                     f.seek(0)
@@ -310,46 +219,65 @@ class OpenMind:
             else:
                 with open(filepath, 'w') as f:
                     json.dump([entry], f, indent=2)
+            
+            self.logger.debug(f"Successfully appended to log: {filepath}")
                     
         except Exception as e:
             self.logger.error(f"Error appending to JSON log {filepath}: {e}")
 
-    async def check_api_health(self) -> Dict[str, str]:
-        """Check health of all API endpoints"""
-        health_status = {}
-        for service in self.api_keys:
-            if self.api_keys[service]:
-                status = await self._check_service_health(service)
-                health_status[service] = status
-        return health_status
-
-    async def _check_service_health(self, service: str) -> str:
-        """Check health of specific API service"""
+    def get_error_logs(self, days: int = 7) -> List[Dict]:
+        """Retrieve recent error logs"""
         try:
-            if service == 'ollama':
-                return "healthy" if self._check_ollama_running() else "unhealthy"
-            
-            # Basic API key validation
-            api_key = self.get_api_key(service)
-            return "healthy" if api_key else "unconfigured"
-            
-        except Exception as e:
-            self.logger.error(f"Health check failed for {service}: {e}")
-            return "unhealthy"
+            error_log = os.path.join(self.memory_structure['folders']['errors'], 'error.log')
+            if not os.path.exists(error_log):
+                return []
 
-    def cleanup_old_logs(self, days_threshold: int = 30):
+            cutoff_time = datetime.now().timestamp() - (days * 24 * 60 * 60)
+            errors = []
+
+            with open(error_log, 'r') as f:
+                for line in f:
+                    try:
+                        # Parse log line
+                        timestamp_str = line.split(' - ')[0]
+                        timestamp = datetime.strptime(timestamp_str, '%Y-%m-%d %H:%M:%S,%f')
+                        
+                        if timestamp.timestamp() > cutoff_time:
+                            errors.append({
+                                'timestamp': timestamp_str,
+                                'message': line.strip()
+                            })
+                    except Exception as e:
+                        self.logger.error(f"Error parsing log line: {e}")
+                        continue
+
+            return errors
+
+        except Exception as e:
+            self.logger.error(f"Error retrieving error logs: {e}")
+            return []
+
+    def cleanup_old_logs(self, days: int = 30):
         """Clean up old log files"""
         try:
-            current_time = datetime.now()
+            cutoff_time = datetime.now().timestamp() - (days * 24 * 60 * 60)
             
-            for path in self.memory_paths.values():
-                for filename in os.listdir(path):
-                    file_path = os.path.join(path, filename)
-                    if os.path.isfile(file_path):
-                        file_time = datetime.fromtimestamp(os.path.getctime(file_path))
-                        if (current_time - file_time).days > days_threshold:
-                            os.remove(file_path)
-                            self.logger.info(f"Removed old log file: {file_path}")
+            for folder in self.memory_structure['folders'].values():
+                if not os.path.exists(folder):
+                    continue
+                    
+                for filename in os.listdir(folder):
+                    filepath = os.path.join(folder, filename)
+                    if os.path.isfile(filepath):
+                        file_time = os.path.getmtime(filepath)
+                        if file_time < cutoff_time:
+                            # Archive instead of delete
+                            archive_path = os.path.join(
+                                self.memory_structure['folders']['ltm'],
+                                f"archived_{filename}"
+                            )
+                            os.rename(filepath, archive_path)
+                            self.logger.info(f"Archived old log file: {filename}")
                             
         except Exception as e:
-            self.logger.error(f"Error cleaning up logs: {e}")
+            self.logger.error(f"Error cleaning up old logs: {e}")
