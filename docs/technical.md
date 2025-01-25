@@ -43,14 +43,15 @@ drAIML is a medical AI consultation system that integrates multiple large langua
    - Medical context validation
 
 ### Directory Structure
+```text
 draiml/
-├── app.py # Main Streamlit application
-├── chatter.py # Model handlers
-├── hippocratic.py # Medical ethics system
+├── draiml.py       # Main Streamlit application
+├── chatter.py      # Model handlers
+├── hippocratic.py  # Medical ethics system
 ├── logic.py # Logic and reasoning system
-├── memory.py # Memory management
-├── openmind.py # API and model management
-├── socratic.py # Socratic reasoning system
+├── memory.py       # Memory management
+├── openmind.py     # API and model management
+├── socratic.py     # Socratic reasoning system
 ├── oath.txt # Dr. AIML's oath
 ├── prompt.txt # Dr. AIML's prompt
 └── memory/ # Memory folder structure
