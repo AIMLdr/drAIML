@@ -24,10 +24,22 @@ draiml/
     ├── stm/            # Short-term memory
     └── ltm/            # Long-term memory
 ```
-
-pip install streamlit python-dotenv groq openai together
+```bash
+git clone https://github.com/AIMLdr/drAIML/
+```
+```bash
+python3 -m venv draiml
+source draiml/bin/activate
+```
+```bash
+pip install -r requirements.txt
+```
+```text
 .env
 TOGETHER_API_KEY=your_together_key
 GROQ_API_KEY=your_groq_key
-
-streamlit run draiml_app.py
+```
+```bash
+streamlit run draiml.py
+```
+```text
