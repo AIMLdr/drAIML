@@ -60,7 +60,7 @@ draiml/
 ├── stm/ # Short-term memory
 ├── ltm/ # Long-term memory
 └── analytics/ # Usage analytics
-
+```
 ### Key Features
 
 #### Model Integration
@@ -128,11 +128,12 @@ Model Initialization → System Prompt Integration →
 Response Generation
 Configuration
 # Environment Variables
-```text
+```env
 TOGETHER_API_KEY=your_together_key
 GROQ_API_KEY=your_groq_key
 OPENAI_API_KEY=your_openai_key
 ```
+
 # Model Configuration
 Timeout settings
 Response parameters
