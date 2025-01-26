@@ -48,5 +48,5 @@ streamlit run draiml.py
 
 NOTE: the streamlit app demo version <a href="https://aimldr.streamlit.app">streamlet demo</a> is web based requiring a <a href="https://api.together.ai/">together.ai</a> API key<br />
 # For private healthcare consultation with drAIML
-install <a href="https://ollama.com/download">ollama</a> then run ollamamodel from your ollama list<br />
+install <a href="https://ollama.com/download">ollama</a> then ollama run yourmodel from your ollama list<br />
 drAIML will see your running ollama model and then choose the running model from the list of models you have installed.
