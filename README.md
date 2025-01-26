@@ -46,4 +46,9 @@ GROQ_API_KEY=your_groq_key
 streamlit run draiml.py
 ```
 
-NOTE: the streamlit app demo version https://aimldr.streamlit.app works with a together.ai API key to run ollama git clone the project and start ollama then choose your running ollama model from the list of models. v2 is on my desk....  will update when ready.
+NOTE: the streamlit app demo version https://aimldr.streamlit.app works with a together.ai API key to run a private consultation with drAIML use ollama on your local machine 
+```bash
+git clone https://github.com/AIMLdr/drAIML/
+```
+and start <a href=://https://ollama.com/download">ollama</a> then run ollamamodel from your ollama list<br />
+v2 is on my desk....  will update when ready
