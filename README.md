@@ -44,10 +44,9 @@ TOGETHER_API_KEY=your_together_key
 ```bash
 streamlit run draiml.py
 ```
-```bash
-git clone https://github.com/AIMLdr/drAIML/
-```
+
 
 NOTE: the streamlit app demo version <a href="https://aimldr.streamlit.app">streamlet demo</a> is web based requiring a <a href="https://api.together.ai/">together.ai</a> API key<br />
-For private healthcare consultation with drAIML install <a href="https://ollama.com/download">ollama</a> then run ollamamodel from your ollama list<br />
+# For private healthcare consultation with drAIML
+install <a href="https://ollama.com/download">ollama</a> then run ollamamodel from your ollama list<br />
 drAIML will see your running ollama model and then choose the running model from the list of models you have installed.
