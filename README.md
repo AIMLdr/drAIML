@@ -49,5 +49,5 @@ NOTE: the streamlit app demo version https://aimldr.streamlit.app works with a t
 ```bash
 git clone https://github.com/AIMLdr/drAIML/
 ```
-and start <a href="https://ollama.com/download">ollama</a> then run ollamamodel from your ollama list<br />
+install <a href="https://ollama.com/download">ollama</a> then run ollamamodel from your ollama list<br />
 v2 is on my desk....  will update when ready
