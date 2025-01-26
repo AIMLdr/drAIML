@@ -40,7 +40,6 @@ pip install -r requirements.txt
 ```text
 .env
 TOGETHER_API_KEY=your_together_key
-GROQ_API_KEY=your_groq_key
 ```
 ```bash
 streamlit run draiml.py
