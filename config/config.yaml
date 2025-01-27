@@ -1,1 +1,67 @@
+# config/config.yaml
 
+openai:
+  gpt-4:
+    name: "GPT-4"
+    tokens: 8192
+    developer: "OpenAI"
+    cost: "$0.03/1K tokens"
+    type: "chat"
+    capabilities:
+      - "medical_reasoning"
+      - "complex_analysis"
+  gpt-4o:
+    name: "GPT-4 Optimized"
+    tokens: 128000
+    developer: "OpenAI"
+    cost: "$0.01/1K tokens"
+    type: "chat"
+    capabilities:
+      - "medical_reasoning"
+      - "complex_analysis"
+
+groq:
+  llama3-70b-8192:
+    name: "LLaMA3-70b-Instruct"
+    tokens: 8192
+    developer: "Meta"
+    cost: "$0.7/1M tokens"
+    type: "chat"
+    capabilities:
+      - "medical_reasoning"
+  mixtral-8x7b-32768:
+    name: "Mixtral-8x7b-Instruct-v0.1"
+    tokens: 32768
+    developer: "Mistral"
+    cost: "$0.4/1M tokens"
+    type: "chat"
+    capabilities:
+      - "medical_reasoning"
+
+together:
+  deepseek-ai/deepseek-r1:
+    name: "DeepSeek R1"
+    tokens: 32768
+    developer: "DeepSeek"
+    cost: "$7.00/1M tokens"
+    type: "chat"
+    capabilities:
+      - "medical_reasoning"
+  meta-llama/llama-3.3-70b-instruct-turbo:
+    name: "Meta LLaMA 3.3 70B"
+    tokens: 4096
+    developer: "Meta"
+    cost: "$0.88/1M tokens"
+    type: "chat"
+    capabilities:
+      - "medical_reasoning"
+
+ollama:
+  local_models:
+    name: "Dynamic Local Models"
+    tokens: "variable"
+    developer: "various"
+    cost: "free"
+    type: "chat"
+    capabilities:
+      - "medical_reasoning"
