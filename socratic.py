@@ -1,322 +1,431 @@
-# socratic.py
+# socratic.py (c) 2025 Gregory L. Magnusson MIT license
+
 import logging
 import os
 import pathlib
-import json
+import ujson
 from datetime import datetime
-from typing import List, Dict, Optional, Union
+from typing import List, Dict, Optional, Union, Any
+from logger import get_logger
+from memory import (
+    MedicalDecision, 
+    store_medical_decision, 
+    DialogEntry, 
+    store_dialog_entry,
+    MemoryManager
+)
+from hippocratic import HippocraticPrinciples, HippocraticReasoning
 from logic import LogicTables
-from memory import DialogEntry, memory_manager
-from hippocratic import HippocraticReasoning
+from config import model_config
 
 class SocraticReasoning:
-    """
-    Enhanced Socratic reasoning system for medical dialogue and decision-making
-    """
+    """Original Socratic Reasoning implementation"""
     
     def __init__(self, chatter):
-        # Initialize components
-        self.premises: List[str] = []
-        self.logger = self._setup_logger()
-        self.logic_tables = LogicTables()
-        self.hippocratic = HippocraticReasoning()
-        self.chatter = chatter
-        self.dialogue_history: List[Dict] = []
-        self.logical_conclusion: str = ""
-        self.max_tokens: int = 100
-
-        # File paths
-        self.file_paths = self._initialize_file_paths()
+        """
+        Initializes the SocraticReasoning instance with necessary configurations.
         
-        # Create necessary directories
-        self._create_directories()
-
-    def _setup_logger(self) -> logging.Logger:
-        """Initialize logging system"""
-        logger = logging.getLogger('SocraticReasoning')
-        logger.setLevel(logging.DEBUG)
-
-        # Create handlers
-        log_dir = './memory/logs'
-        os.makedirs(log_dir, exist_ok=True)
-
-        handlers = {
-            'file': logging.FileHandler('./memory/logs/socratic.log'),
-            'socratic': logging.FileHandler('./memory/logs/socratic_reasoning.log'),
-            'premises': logging.FileHandler('./memory/logs/premises.log'),
-            'stream': logging.StreamHandler()
-        }
-
-        # Create formatter
-        formatter = logging.Formatter('%(asctime)s - %(name)s - %(levelname)s - %(message)s')
-
-        # Set up handlers
-        for handler in handlers.values():
-            handler.setFormatter(formatter)
-            logger.addHandler(handler)
-
-        return logger
-
-    def _initialize_file_paths(self) -> Dict[str, str]:
-        """Initialize file paths for various logs"""
-        return {
+        Args:
+            chatter: An instance of the model used for generating responses.
+        """
+        self.premises = []  # List to hold premises
+        self.logger = get_logger('socratic')
+        
+        # Initialize memory manager
+        self.memory_manager = MemoryManager()
+        
+        # File paths for saving premises, non-premises, conclusions, and truth tables
+        self.memory_paths = {
             'socratic_logs': './memory/logs/socraticlogs.txt',
             'premises': './memory/logs/premises.json',
             'not_premises': './memory/logs/notpremise.json',
             'conclusions': './memory/logs/conclusions.txt',
-            'truth_tables': './memory/logs/truth.json',
-            'medical_reasoning': './memory/logs/medical_reasoning.json'
+            'truth_tables': './memory/logs/truth.json'
         }
 
-    def _create_directories(self):
-        """Create necessary directories"""
-        for filepath in self.file_paths.values():
-            pathlib.Path(filepath).parent.mkdir(parents=True, exist_ok=True)
+        # Create necessary directories
+        for path in self.memory_paths.values():
+            pathlib.Path(path).parent.mkdir(parents=True, exist_ok=True)
 
-    def add_premise(self, premise: str) -> bool:
-        """
-        Add a premise to the reasoning system
-        
-        Args:
-            premise: The premise to add
-            
-        Returns:
-            bool: Success status
-        """
+        self.max_tokens = 100  # Default max tokens
+        self.chatter = chatter  # Chatter model for generating responses
+        self.logic_tables = LogicTables()  # Logic tables for reasoning
+        self.dialogue_history = []  # List to hold the history of dialogues
+        self.logical_conclusion = ""  # Variable to store the conclusion
+
+        # Initialize session tracking
+        self.session_id = datetime.now().strftime("%Y%m%d_%H%M%S")
+        self.session_data = {
+            "premises_added": 0,
+            "conclusions_drawn": 0,
+            "validations_performed": 0
+        }
+
+        self.logger.info("Socratic reasoning initialized", 
+                        extra={'structured_data': {
+                            'session_id': self.session_id
+                        }})
+
+    def socraticlogs(self, message, level='info'):
+        """Log Socratic reasoning process"""
+        if level == 'info':
+            self.logger.info(message)
+        elif level == 'error':
+            self.logger.error(message)
+        self._log_to_file(message, level)
+
+    def _log_to_file(self, message, level):
+        """Write to Socratic log file"""
         try:
-            # Validate premise
-            if not self._validate_premise(premise):
-                self.log_not_premise(f'Invalid premise format: {premise}')
-                return False
+            with open(self.memory_paths['socratic_logs'], 'a') as file:
+                timestamp = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+                file.write(f"{timestamp} - {level.upper()}: {message}\n")
+        except Exception as e:
+            self.logger.error(f"Error writing to Socratic log: {e}")
 
-            # Check medical validity
-            medical_validation = self.hippocratic.validate_medical_response(
-                premise,
-                {"context": "premise_validation"}
-            )
-
-            if not medical_validation["is_valid"]:
-                self.log_not_premise(f'Medical validation failed: {premise}')
-                return False
-
-            # Add premise if valid
-            if premise not in self.premises:
+    def add_premise(self, premise):
+        """Add a premise with validation"""
+        try:
+            if self.parse_statement(premise):
                 self.premises.append(premise)
-                self._save_premises()
-                self.logger.info(f'Added premise: {premise}')
+                self.save_premises()
+                self.session_data["premises_added"] += 1
+                
+                self.logger.info("Premise added", 
+                               extra={'structured_data': {
+                                   'premise': premise,
+                                   'session_id': self.session_id
+                               }})
                 return True
-
-            return False
-
+            else:
+                self.log_not_premise(f'Invalid premise: {premise}', level='error')
+                return False
+                
         except Exception as e:
             self.logger.error(f"Error adding premise: {e}")
             return False
 
-    def draw_conclusion(self) -> str:
-        """
-        Draw a conclusion based on current premises
-        
-        Returns:
-            str: The derived conclusion
-        """
-        if not self.premises:
-            return "No premises available for reasoning."
-
+    def parse_statement(self, statement):
+        """Validate statement structure"""
         try:
-            # Generate initial conclusion
-            conclusion = self._generate_initial_conclusion()
+            if not isinstance(statement, str) or not statement.strip():
+                return False
+                
+            # Basic validation
+            min_words = 3
+            max_words = 100
+            words = statement.split()
             
-            # Validate conclusion
-            if not self._validate_conclusion(conclusion):
-                self.logger.warning("Initial conclusion failed validation")
-                conclusion = self._refine_conclusion(conclusion)
-
-            # Validate with Hippocratic principles
-            medical_validation = self.hippocratic.validate_medical_response(
-                conclusion,
-                {"context": "conclusion_validation"}
-            )
-
-            if not medical_validation["is_valid"]:
-                self.logger.warning("Medical validation failed")
-                conclusion = medical_validation["modified_response"]
-
-            # Store the conclusion
-            self._store_conclusion(conclusion)
+            if not min_words <= len(words) <= max_words:
+                return False
+                
+            return True
             
-            return conclusion
+        except Exception as e:
+            self.logger.error(f"Error parsing statement: {e}")
+            return False
 
+    def generate_new_premise(self, premise):
+        """Generate new premise based on existing one"""
+        try:
+            premise_text = f"Based on the premise: {premise}\nGenerate a related premise:"
+            new_premise = self.chatter.generate_response(premise_text)
+            
+            self.logger.debug("Generated new premise", 
+                            extra={'structured_data': {
+                                'original': premise,
+                                'generated': new_premise
+                            }})
+            
+            return new_premise.strip()
+            
+        except Exception as e:
+            self.logger.error(f"Error generating premise: {e}")
+            return ""
+
+    def challenge_premise(self, premise):
+        """Challenge and potentially remove a premise"""
+        try:
+            if premise in self.premises:
+                self.premises.remove(premise)
+                self.remove_equivalent_premises(premise)
+                self.save_premises()
+                
+                self.logger.info("Premise challenged and removed", 
+                               extra={'structured_data': {
+                                   'premise': premise,
+                                   'session_id': self.session_id
+                               }})
+                return True
+            else:
+                self.log_not_premise(f'Premise not found: {premise}', level='error')
+                return False
+                
+        except Exception as e:
+            self.logger.error(f"Error challenging premise: {e}")
+            return False
+
+    def remove_equivalent_premises(self, premise):
+        """Remove logically equivalent premises"""
+        try:
+            equivalent_premises = [
+                p for p in self.premises 
+                if self.logic_tables.unify_variables(premise, p)
+            ]
+            
+            for p in equivalent_premises:
+                self.premises.remove(p)
+                self.log_not_premise(f'Removed equivalent premise: {p}')
+                
+            self.save_premises()
+            
+        except Exception as e:
+            self.logger.error(f"Error removing equivalent premises: {e}")
+
+    def save_premises(self):
+        """Save current premises to file"""
+        try:
+            with open(self.memory_paths['premises'], 'w') as file:
+                ujson.dump(self.premises, file, indent=2)
+                
+            self.logger.debug("Premises saved", 
+                            extra={'structured_data': {
+                                'count': len(self.premises)
+                            }})
+                
+        except Exception as e:
+            self.logger.error(f"Error saving premises: {e}")
+
+    def log_not_premise(self, message, level='info'):
+        """Log invalid or rejected premises"""
+        try:
+            entry = {
+                "timestamp": datetime.now().isoformat(),
+                "level": level.upper(),
+                "message": message,
+                "session_id": self.session_id
+            }
+            
+            with open(self.memory_paths['not_premises'], 'a') as file:
+                ujson.dump(entry, file, indent=2)
+                file.write('\n')
+                
+            self.logger.info(f"Not premise logged: {message}", 
+                           extra={'structured_data': entry})
+                
+        except Exception as e:
+            self.logger.error(f"Error logging not premise: {e}")
+
+    def draw_conclusion(self):
+        """Draw logical conclusion from premises"""
+        try:
+            if not self.premises:
+                return "No premises available for logic as conclusion."
+
+            current_premise = self.premises[0]
+            additional_premises_count = 0
+            
+            while additional_premises_count < 5:
+                new_premise = self.generate_new_premise(current_premise)
+                if not self.parse_statement(new_premise):
+                    continue
+                    
+                self.premises.append(new_premise)
+                self.save_premises()
+                additional_premises_count += 1
+
+                raw_response = self.chatter.generate_response(current_premise)
+                conclusion = raw_response.strip()
+                self.logical_conclusion = conclusion
+
+                if self.validate_conclusion():
+                    self.session_data["conclusions_drawn"] += 1
+                    break
+                else:
+                    self.log_not_premise(
+                        'Invalid conclusion. Generating more premises.',
+                        level='error'
+                    )
+
+            # Save conclusion
+            self._save_conclusion()
+
+            # Clear premises for next round
+            self.premises = []
+            
+            self.logger.info("Conclusion drawn", 
+                           extra={'structured_data': {
+                               'conclusion': self.logical_conclusion,
+                               'session_id': self.session_id
+                           }})
+
+            return self.logical_conclusion
+            
         except Exception as e:
             self.logger.error(f"Error drawing conclusion: {e}")
             return "Error generating conclusion."
 
-    def _generate_initial_conclusion(self) -> str:
-        """Generate initial conclusion from premises"""
+    def _save_conclusion(self):
+        """Save conclusion and related data"""
         try:
-            # Combine recent premises for context
-            context = " ".join(self.premises[-3:])
-            
-            prompt = f"""Based on these premises:
-            {context}
-            
-            Please provide a medical conclusion that:
-            1. Is directly related to the premises
-            2. Is logically sound
-            3. Follows medical best practices
-            4. Is clear and actionable
-            
-            Conclusion:"""
-
-            conclusion = self.chatter.generate_response(prompt)
-            return conclusion.strip()
-
-        except Exception as e:
-            self.logger.error(f"Error generating initial conclusion: {e}")
-            return ""
-
-    def _validate_conclusion(self, conclusion: str) -> bool:
-        """Validate a conclusion"""
-        if not conclusion:
-            return False
-
-        # Logical validation
-        logical_validation = self.logic_tables.validate_conclusion(
-            conclusion,
-            self.premises
-        )
-
-        if not logical_validation["valid"]:
-            self.logger.warning(f"Logical validation failed: {logical_validation['reason']}")
-            return False
-
-        return True
-
-    def _refine_conclusion(self, conclusion: str) -> str:
-        """Refine an invalid conclusion"""
-        try:
-            prompt = f"""The following medical conclusion needs refinement:
-            {conclusion}
-
-            Please improve it to ensure:
-            1. Logical consistency with premises
-            2. Medical accuracy
-            3. Clear actionable recommendations
-            4. Patient safety considerations
-
-            Refined conclusion:"""
-
-            refined = self.chatter.generate_response(prompt)
-            return refined.strip()
-
-        except Exception as e:
-            self.logger.error(f"Error refining conclusion: {e}")
-            return conclusion
-
-    def _store_conclusion(self, conclusion: str):
-        """Store conclusion in memory"""
-        try:
-            # Save to conclusions file
-            with open(self.file_paths['conclusions'], 'a') as f:
-                f.write(f"{datetime.now().isoformat()}: {conclusion}\n")
-
-            # Save with premises for context
             conclusion_entry = {
                 "timestamp": datetime.now().isoformat(),
+                "session_id": self.session_id,
                 "premises": self.premises,
-                "conclusion": conclusion,
-                "validation": {
-                    "logical": self.logic_tables.validate_conclusion(conclusion, self.premises),
-                    "medical": self.hippocratic.validate_medical_response(
-                        conclusion,
-                        {"context": "conclusion_storage"}
-                    )
-                }
+                "conclusion": self.logical_conclusion
             }
-
-            # Save to medical reasoning log
-            self._save_json_log(
-                self.file_paths['medical_reasoning'],
-                conclusion_entry
-            )
-
-        except Exception as e:
-            self.logger.error(f"Error storing conclusion: {e}")
-
-    def _validate_premise(self, premise: str) -> bool:
-        """Validate a premise"""
-        if not premise or not isinstance(premise, str):
-            return False
-
-        # Basic validation
-        if len(premise.strip()) < 3:
-            return False
-
-        # Logical validation
-        return self.logic_tables.tautology(premise)
-
-    def _save_premises(self):
-        """Save premises to file"""
-        try:
-            premises_entry = {
-                "timestamp": datetime.now().isoformat(),
-                "premises": self.premises
-            }
-            self._save_json_log(self.file_paths['premises'], premises_entry)
-        except Exception as e:
-            self.logger.error(f"Error saving premises: {e}")
-
-    def log_not_premise(self, message: str, level: str = 'warning'):
-        """Log invalid premises"""
-        try:
-            entry = {
-                "timestamp": datetime.now().isoformat(),
-                "level": level,
-                "message": message
-            }
-            self._save_json_log(self.file_paths['not_premises'], entry)
             
-            if level == 'warning':
-                self.logger.warning(message)
-            else:
-                self.logger.error(message)
+            # Save to premises file
+            with open(self.memory_paths['premises'], 'w') as file:
+                ujson.dump(conclusion_entry, file, indent=2)
 
+            # Log to conclusions file
+            with open(self.memory_paths['conclusions'], 'a') as file:
+                file.write(f"\n{datetime.now().isoformat()}\n")
+                file.write(f"Session ID: {self.session_id}\n")
+                file.write(f"Premises: {self.premises}\n")
+                file.write(f"Conclusion: {self.logical_conclusion}\n")
+
+            # Save as truth if valid
+            if self.validate_conclusion():
+                self.save_truth(self.logical_conclusion)
+                
+            self.logger.info("Conclusion saved", 
+                           extra={'structured_data': conclusion_entry})
+                
         except Exception as e:
-            self.logger.error(f"Error logging not premise: {e}")
+            self.logger.error(f"Error saving conclusion: {e}")
 
-    def _save_json_log(self, filepath: str, entry: Dict):
-        """Save entry to JSON log file"""
+    def validate_conclusion(self):
+        """Validate logical conclusion"""
         try:
-            if os.path.exists(filepath):
-                with open(filepath, 'r+') as f:
-                    try:
-                        data = json.load(f)
-                    except json.JSONDecodeError:
-                        data = []
-                    data.append(entry)
-                    f.seek(0)
-                    f.truncate()
-                    json.dump(data, f, indent=2)
-            else:
-                with open(filepath, 'w') as f:
-                    json.dump([entry], f, indent=2)
+            is_valid = self.logic_tables.tautology(self.logical_conclusion)
+            
+            self.session_data["validations_performed"] += 1
+            
+            self.logger.debug("Conclusion validated", 
+                            extra={'structured_data': {
+                                'conclusion': self.logical_conclusion,
+                                'is_valid': is_valid
+                            }})
+            
+            return is_valid
+            
         except Exception as e:
-            self.logger.error(f"Error saving to JSON log {filepath}: {e}")
+            self.logger.error(f"Error validating conclusion: {e}")
+            return False
 
-    def get_reasoning_history(self) -> List[Dict]:
-        """Get reasoning history"""
+    def save_truth(self, truth):
+        """Save validated truth"""
         try:
-            return self._load_json_file(self.file_paths['medical_reasoning'])
+            truth_entry = {
+                "truth": truth,
+                "timestamp": datetime.now().isoformat(),
+                "session_id": self.session_id
+            }
+            
+            with open(self.memory_paths['truth_tables'], 'a') as file:
+                ujson.dump(truth_entry, file, indent=2)
+                file.write('\n')
+                
+            self.logger.info("Truth saved", 
+                           extra={'structured_data': truth_entry})
+                
         except Exception as e:
-            self.logger.error(f"Error getting reasoning history: {e}")
-            return []
+            self.logger.error(f"Error saving truth: {e}")
 
-    def _load_json_file(self, filepath: str) -> List[Dict]:
-        """Load JSON file"""
+    def update_logic_tables(self, variables, expressions, valid_truths):
+        """Update logic tables with new data"""
         try:
-            if os.path.exists(filepath):
-                with open(filepath, 'r') as f:
-                    return json.load(f)
-            return []
+            self.logic_tables.variables = variables
+            self.logic_tables.expressions = expressions
+            self.logic_tables.valid_truths = valid_truths
+
+            # Save truth tables
+            truth_tables_entry = {
+                "timestamp": datetime.now().isoformat(),
+                "session_id": self.session_id,
+                "variables": variables,
+                "expressions": expressions,
+                "valid_truths": valid_truths
+            }
+            
+            with open(self.memory_paths['truth_tables'], 'w') as file:
+                ujson.dump(truth_tables_entry, file, indent=2)
+
+            # Save timestamped belief file
+            belief_path = f'./memory/truth/belief_{datetime.now().strftime("%Y%m%d%H%M%S")}.json'
+            pathlib.Path(belief_path).parent.mkdir(parents=True, exist_ok=True)
+            with open(belief_path, 'w') as file:
+                ujson.dump(truth_tables_entry, file, indent=2)
+
+            self.logger.info("Logic tables updated", 
+                           extra={'structured_data': truth_tables_entry})
+                
         except Exception as e:
-            self.logger.error(f"Error loading JSON file {filepath}: {e}")
-            return []
+            self.logger.error(f"Error updating logic tables: {e}")
+
+    def set_max_tokens(self, max_tokens):
+        """Set maximum tokens for responses"""
+        try:
+            self.max_tokens = max_tokens
+            self.logger.info(f"Max tokens set to: {max_tokens}")
+        except Exception as e:
+            self.logger.error(f"Error setting max tokens: {e}")
+
+    def get_session_summary(self) -> Dict:
+        """Get current session summary"""
+        try:
+            return {
+                "session_id": self.session_id,
+                "start_time": self.session_id[:8],
+                "premises_added": self.session_data["premises_added"],
+                "conclusions_drawn": self.session_data["conclusions_drawn"],
+                "validations_performed": self.session_data["validations_performed"]
+            }
+        except Exception as e:
+            self.logger.error(f"Error getting session summary: {e}")
+            return {}
+
+    def interact(self):
+        """Interactive Socratic dialogue session"""
+        self.logger.info("Starting Socratic dialogue session", 
+                        extra={'structured_data': {
+                            'session_id': self.session_id
+                        }})
+        
+        while True:
+            try:
+                self.socraticlogs("\nCommands: add, challenge, conclude, set_tokens, exit")
+                cmd = input("> ").strip().lower()
+
+                if cmd == 'exit':
+                    self.socraticlogs('Exiting Socratic Reasoning.')
+                    break
+                elif cmd == 'add':
+                    premise = input("Enter the premise: ").strip()
+                    self.add_premise(premise)
+                elif cmd == 'challenge':
+                    premise = input("Enter the premise to challenge: ").strip()
+                    self.challenge_premise(premise)
+                elif cmd == 'conclude':
+                    conclusion = self.draw_conclusion()
+                    print(conclusion)
+                elif cmd == 'set_tokens':
+                    tokens = input("Enter the maximum number of tokens: ").strip()
+                    if tokens.isdigit():
+                        self.set_max_tokens(int(tokens))
+                    else:
+                        self.socraticlogs("Invalid number of tokens.", level='error')
+                else:
+                    self.log_not_premise('Invalid command.', level='error')
+                    
+            except Exception as e:
+                self.logger.error(f"Error in interaction: {e}")
+                print(f"An error occurred: {str(e)}")
+
+# Initialize medical components if needed
+try:
+    from medical_socratic import MedicalSocraticReasoning
+except ImportError:
+    pass

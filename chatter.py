@@ -1,77 +1,157 @@
-# chatter.py
-import openai
-from groq import Groq
-import aiohttp
-import logging
+# chatter.py (c) 2024 Gregory L. Magnusson MIT license
+
 import os
-import requests
-import asyncio
+import logging
 import json
+import requests
 from typing import Dict, List, Optional, Union
+from datetime import datetime
+from openai import OpenAI
+from groq import Groq
+import subprocess
+from logger import get_logger
+from config import model_config
 
-
-logging.basicConfig(level=logging.DEBUG)
-
-def load_system_prompt():
-    """Load system prompt from prompt.txt"""
+def load_system_prompt() -> str:
+    """Load system prompt from file"""
     try:
         with open("prompt.txt", "r", encoding="utf-8") as f:
             return f.read().strip()
-    except FileNotFoundError:
-        logging.warning("prompt.txt not found, using default prompt")
-        return "You are Dr. AIML, a medical AI consultant. Provide accurate, ethical medical information and always encourage consulting with healthcare professionals."
     except Exception as e:
-        logging.error(f"Error loading prompt: {e}")
-        return "You are Dr. AIML, a medical AI consultant. Provide accurate, ethical medical information and always encourage consulting with healthcare professionals."
+        logging.error(f"Error loading system prompt: {e}")
+        return "You are a medical AI assistant. Please provide accurate and helpful medical information."
 
 class GPT4o:
+    """OpenAI model handler"""
+    
     def __init__(self, api_key):
-        self.client = openai.Client(api_key=api_key)
-        self.system_prompt = load_system_prompt()
-        
-    def generate_response(self, prompt):
+        self.logger = get_logger('openai')
+        os.environ["OPENAI_API_KEY"] = api_key
         try:
-            response = self.client.chat.completions.create(
-                model="gpt-4",
-                messages=[{
-                    "role": "system",
-                    "content": self.system_prompt
-                },
-                {
-                    "role": "user",
-                    "content": prompt
-                }]
-            )
-            return response.choices[0].message.content
+            self.client = OpenAI()  # No arguments needed
+            self.system_prompt = load_system_prompt()
+            self.selected_model = "gpt-4"
         except Exception as e:
-            logging.error(f"OpenAI Error: {e}")
+            self.logger.error(f"OpenAI Error: {e}")
+            raise
+
+    def select_model(self, model_id: str) -> bool:
+        try:
+            self.selected_model = model_id
+            self.logger.info(f"Model selected: {model_id}")
+            return True
+        except Exception as e:
+            self.logger.error(f"OpenAI Error selecting model: {e}")
+            return False
+
+    def generate_response(self, prompt: str) -> str:
+        try:
+            messages = [
+                {"role": "system", "content": self.system_prompt},
+                {"role": "user", "content": prompt}
+            ]
+
+            chat_completion = self.client.chat.completions.create(
+                model=self.selected_model,
+                messages=messages
+            )
+
+            return chat_completion.choices[0].message.content
+
+        except Exception as e:
+            self.logger.error(f"OpenAI Error: {e}")
             return f"Error generating response: {str(e)}"
+
+    def list_models(self):
+        """List available models"""
+        return [
+            {
+                "id": "gpt-4",
+                "name": "GPT-4",
+                "type": "chat",
+                "tokens": 8192,
+                "developer": "OpenAI"
+            },
+            {
+                "id": "gpt-4-turbo",
+                "name": "GPT-4 Turbo",
+                "type": "chat",
+                "tokens": 128000,
+                "developer": "OpenAI"
+            },
+            {
+                "id": "gpt-3.5-turbo",
+                "name": "GPT-3.5 Turbo",
+                "type": "chat",
+                "tokens": 16385,
+                "developer": "OpenAI"
+            }
+        ]
 
 class GroqModel:
+    """Groq model handler"""
+    
     def __init__(self, api_key):
-        self.client = Groq(api_key=api_key)
-        self.system_prompt = load_system_prompt()
-        
-    def generate_response(self, prompt):
+        self.logger = get_logger('groq')
+        os.environ["GROQ_API_KEY"] = api_key
         try:
-            response = self.client.chat.completions.create(
-                messages=[{
-                    "role": "system",
-                    "content": self.system_prompt
-                },
-                {
-                    "role": "user",
-                    "content": prompt
-                }],
-                model="mixtral-8x7b-32768"
-            )
-            return response.choices[0].message.content
+            self.client = Groq()  # No arguments needed
+            self.selected_model = "mixtral-8x7b-32768"
+            self.system_prompt = load_system_prompt()
         except Exception as e:
-            logging.error(f"Groq Error: {e}")
+            self.logger.error(f"Groq Error: {e}")
+            raise
+
+    def select_model(self, model_id: str) -> bool:
+        try:
+            self.selected_model = model_id
+            return True
+        except Exception as e:
+            self.logger.error(f"Groq Error selecting model: {e}")
+            return False
+
+    def generate_response(self, prompt: str) -> str:
+        try:
+            messages = [
+                {"role": "system", "content": self.system_prompt},
+                {"role": "user", "content": prompt}
+            ]
+
+            chat_completion = self.client.chat.completions.create(
+                messages=messages,
+                model=self.selected_model,
+            )
+
+            return chat_completion.choices[0].message.content
+
+        except Exception as e:
+            self.logger.error(f"Groq Error: {e}")
             return f"Error generating response: {str(e)}"
 
+    def list_models(self):
+        """List available models"""
+        return [
+            {
+                "id": "mixtral-8x7b-32768",
+                "name": "Mixtral-8x7b-Instruct-v0.1",
+                "type": "chat",
+                "tokens": 32768,
+                "developer": "Mistral"
+            },
+            {
+                "id": "llama-3.3-70b-versatile",
+                "name": "LLaMA 3.3 70B Versatile",
+                "type": "chat",
+                "tokens": 8192,
+                "developer": "Meta"
+            }
+        ]
+
 class TogetherModel:
+    """Together AI model handler"""
+    
     def __init__(self, api_key):
+        self.logger = get_logger('together')
         self.api_key = api_key
         self.base_url = "https://api.together.xyz/v1"
         self.headers = {
@@ -79,11 +159,21 @@ class TogetherModel:
             "Content-Type": "application/json"
         }
         self.system_prompt = load_system_prompt()
+        self.selected_model = "mistralai/Mixtral-8x7B-Instruct-v0.1"
 
-    def generate_response(self, prompt, model="mistralai/Mixtral-8x7B-Instruct-v0.1"):
+    def select_model(self, model_id: str) -> bool:
+        try:
+            self.selected_model = model_id
+            self.logger.info(f"Model selected: {model_id}")
+            return True
+        except Exception as e:
+            self.logger.error(f"Together Error selecting model: {e}")
+            return False
+
+    def generate_response(self, prompt: str) -> str:
         try:
             payload = {
-                "model": model,
+                "model": self.selected_model,
                 "messages": [
                     {"role": "system", "content": self.system_prompt},
                     {"role": "user", "content": prompt}
@@ -98,141 +188,119 @@ class TogetherModel:
                 json=payload
             )
             response.raise_for_status()
+            
+            self.logger.debug("Response generated", 
+                            extra={'structured_data': {
+                                'model': self.selected_model,
+                                'status_code': response.status_code
+                            }})
+            
             return response.json()["choices"][0]["message"]["content"]
             
         except Exception as e:
-            logging.error(f"Together.ai Error: {e}")
+            self.logger.error(f"Together Error: {e}")
             return f"Error generating response: {str(e)}"
 
-class OllamaHandler:
-    """Class to interact with local Ollama models"""
-    def __init__(self):
-        self.base_url = "http://localhost:11434"
-        self.headers = {"Content-Type": "application/json"}
-        self.available_models = self.list_models()
-        self.selected_model = None
-        self.system_prompt = load_system_prompt()
-        self.last_error = None
+    def list_models(self):
+        """List available models"""
+        return [
+            {
+                "id": "mistralai/Mixtral-8x7B-Instruct-v0.1",
+                "name": "Mixtral-8x7B-Instruct",
+                "type": "chat",
+                "tokens": 32768,
+                "developer": "Mistral"
+            },
+            {
+                "id": "meta-llama/Llama-2-70b-chat-hf",
+                "name": "Llama-2-70b",
+                "type": "chat",
+                "tokens": 4096,
+                "developer": "Meta"
+            }
+        ]
 
-    def check_installation(self):
-        """Check if Ollama is installed and running"""
+class OllamaHandler:
+    """Ollama local model handler"""
+    
+    def __init__(self):
+        self.logger = get_logger('ollama')
+        self.selected_model = None
+        self.last_error = None
+        self.system_prompt = load_system_prompt()
+
+    def check_installation(self) -> bool:
         try:
-            response = requests.get(f"{self.base_url}/api/tags")
-            return response.status_code == 200
-        except requests.RequestException:
+            result = subprocess.run(['ollama', 'list'], 
+                                 capture_output=True, 
+                                 text=True)
+            return result.returncode == 0
+        except Exception as e:
+            self.last_error = str(e)
+            self.logger.error(f"Ollama installation check failed: {e}")
             return False
 
-    def list_models(self):
-        """List available Ollama models"""
+    def list_models(self) -> List[str]:
         try:
-            response = requests.get(f"{self.base_url}/api/tags")
-            if response.status_code == 200:
-                models = response.json().get("models", [])
-                return [model["name"] for model in models]
+            result = subprocess.run(['ollama', 'list'], 
+                                 capture_output=True, 
+                                 text=True)
+            if result.returncode == 0:
+                models = []
+                for line in result.stdout.split('\n')[1:]:  # Skip header
+                    if line.strip():
+                        models.append(line.split()[0])
+                return models
             return []
-        except requests.RequestException as e:
-            logging.error(f"Error listing Ollama models: {e}")
+        except Exception as e:
+            self.last_error = str(e)
+            self.logger.error(f"Error listing Ollama models: {e}")
             return []
 
     def select_model(self, model_name: str) -> bool:
-        """Select a model from available models"""
-        if not model_name:
-            self.last_error = "No model specified"
-            return False
-        if model_name in self.available_models:
-            self.selected_model = model_name
-            self.last_error = None
-            return True
-        self.last_error = f"Model {model_name} not found in available models"
-        return False
-
-    def get_last_error(self):
-        """Get the last error message"""
-        return self.last_error
-
-    def generate_response(self, prompt, model=None):
-        """Synchronous wrapper for async generation"""
-        if not self.selected_model and not model:
-            return "Please select a model first"
         try:
-            return asyncio.run(self.generate_response_async(prompt, model))
+            if model_name in self.list_models():
+                self.selected_model = model_name
+                self.logger.info(f"Model selected: {model_name}")
+                return True
+            self.last_error = f"Model {model_name} not found"
+            return False
         except Exception as e:
-            logging.error(f"Ollama Sync Error: {e}")
             self.last_error = str(e)
+            self.logger.error(f"Error selecting Ollama model: {e}")
+            return False
+
+    def generate_response(self, prompt: str) -> str:
+        if not self.selected_model:
+            return "No model selected"
+
+        try:
+            cmd = [
+                'ollama', 'run', 
+                self.selected_model, 
+                f"{self.system_prompt}\n\nUser: {prompt}\nAssistant:"
+            ]
+            
+            result = subprocess.run(cmd, 
+                                 capture_output=True, 
+                                 text=True)
+            
+            if result.returncode == 0:
+                response = result.stdout.strip()
+                self.logger.debug("Response generated", 
+                                extra={'structured_data': {
+                                    'model': self.selected_model,
+                                    'response_length': len(response)
+                                }})
+                return response
+            else:
+                self.last_error = result.stderr
+                return f"Error: {result.stderr}"
+
+        except Exception as e:
+            self.last_error = str(e)
+            self.logger.error(f"Ollama Error: {e}")
             return f"Error generating response: {str(e)}"
 
-    async def generate_response_async(self, prompt, model=None):
-        """Generate response using Ollama's API asynchronously"""
-        try:
-            use_model = model or self.selected_model
-            if not use_model:
-                available = ", ".join(self.available_models)
-                self.last_error = f"No model selected. Available models: {available}"
-                return self.last_error
-
-            if use_model not in self.available_models:
-                available = ", ".join(self.available_models)
-                self.last_error = f"Model {use_model} not found. Available models: {available}"
-                return self.last_error
-
-            async with aiohttp.ClientSession() as session:
-                payload = {
-                    "model": use_model,
-                    "messages": [
-                        {"role": "system", "content": self.system_prompt},
-                        {"role": "user", "content": prompt}
-                    ],
-                    "stream": False
-                }
-                
-                try:
-                    async with session.post(
-                        f"{self.base_url}/api/chat",
-                        json=payload,
-                        headers=self.headers,
-                        timeout=600  # Add timeout in seconds default 10 mins
-                    ) as response:
-                        response.raise_for_status()
-                        data = await response.json()
-                        self.last_error = None
-                        return data.get("message", {}).get("content", "")
-                except aiohttp.ClientResponseError as e:
-                    if e.status == 500:
-                        self.last_error = f"Error: The model '{use_model}' encountered an error. Please try another model."
-                        return self.last_error
-                    raise
-                except asyncio.TimeoutError:
-                    self.last_error = f"Request timed out. The model '{use_model}' took too long to respond."
-                    return self.last_error
-                    
-        except Exception as e:
-            error_msg = f"Ollama Error: {str(e)}"
-            logging.error(error_msg)
-            self.last_error = error_msg
-            return error_msg
-
-    def get_model_info(self, model_name: str = None) -> Dict:
-        """Get information about a specific model or currently selected model"""
-        try:
-            model = model_name or self.selected_model
-            if not model:
-                return {"error": "No model specified or selected"}
-            
-            response = requests.get(f"{self.base_url}/api/show/{model}")
-            if response.status_code == 200:
-                return response.json()
-            return {"error": f"Failed to get info for model {model}"}
-        except Exception as e:
-            return {"error": f"Error getting model info: {str(e)}"}
-
-def get_model_instance(provider, api_key=None):
-    """Factory function to get the appropriate model instance"""
-    if provider == "Together":
-        return TogetherModel(api_key) if api_key else None
-    elif provider == "Groq":
-        return GroqModel(api_key) if api_key else None
-    elif provider == "Ollama":
-        return OllamaHandler()
-    elif provider == "GPT4":
-        return GPT4o(api_key) if api_key else None
-    return None
+    def get_last_error(self) -> Optional[str]:
+        return self.last_error

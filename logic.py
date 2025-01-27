@@ -1,218 +1,18 @@
-# logic.py
-import logging
-from typing import Set, List, Dict, Union, Optional, Tuple
-from datetime import datetime
+# logic.py (c) 2025 Gregory L. Magnusson MIT license
+
 import os
 import json
+from datetime import datetime
+from typing import Set, List, Dict, Union, Optional, Tuple
 import re
-
-class MedicalPatterns:
-    """Enhanced medical pattern recognition system"""
-    
-    SYMPTOM_PATTERNS = {
-        "temporal": {
-            "acute": ["sudden", "abrupt", "recent", "new onset", "immediate"],
-            "chronic": ["long-term", "ongoing", "persistent", "continuous", "lasting"],
-            "intermittent": ["comes and goes", "periodic", "recurring", "occasional", "fluctuating"],
-            "progressive": ["worsening", "increasing", "deteriorating", "advancing", "developing"]
-        },
-        "severity": {
-            "mild": ["slight", "minor", "minimal", "light", "gentle"],
-            "moderate": ["medium", "intermediate", "moderate-intensity", "substantial"],
-            "severe": ["intense", "extreme", "severe", "excruciating", "unbearable"],
-            "critical": ["life-threatening", "emergency", "critical", "urgent", "serious"]
-        },
-        "quality": {
-            "pain": ["sharp", "dull", "throbbing", "burning", "stabbing", "aching"],
-            "sensation": ["tingling", "numbness", "itching", "pressure", "tightness"],
-            "visual": ["blurred", "double vision", "spots", "flashing", "dimness"],
-            "auditory": ["ringing", "buzzing", "muffled", "loss of hearing"]
-        },
-        "location": {
-            "specific": ["localized", "focused", "specific area", "point tenderness"],
-            "radiating": ["spreading", "moving", "radiating to", "extending"],
-            "bilateral": ["both sides", "bilateral", "symmetrical"],
-            "systemic": ["throughout body", "generalized", "systemic", "widespread"]
-        }
-    }
-    
-    CONDITION_INDICATORS = {
-        "diagnostic": ["diagnosed with", "confirmed", "testing showed", "results indicate"],
-        "suspected": ["suspected", "possible", "probable", "likely", "consistent with"],
-        "differential": ["rule out", "versus", "differential includes", "to consider"],
-        "comorbid": ["along with", "associated with", "complicated by", "concurrent"]
-    }
-    
-    TREATMENT_PATTERNS = {
-        "medication": ["prescribed", "taking", "administered", "dosage", "frequency"],
-        "procedure": ["underwent", "performed", "scheduled for", "completed"],
-        "therapy": ["physical therapy", "occupational therapy", "counseling", "rehabilitation"],
-        "lifestyle": ["diet", "exercise", "sleep", "stress management", "lifestyle changes"]
-    }
-    
-    RISK_FACTORS = {
-        "demographic": ["age", "gender", "ethnicity", "family history"],
-        "lifestyle": ["smoking", "alcohol", "diet", "exercise", "occupation"],
-        "medical": ["previous condition", "chronic disease", "medication history"],
-        "environmental": ["exposure to", "travel history", "living conditions"]
-    }
-
-class ConfidenceScoring:
-    """Enhanced confidence scoring system"""
-    
-    CONFIDENCE_FACTORS = {
-        "medical_context": {
-            "weight": 0.25,
-            "components": {
-                "terminology": 0.4,
-                "pattern_match": 0.3,
-                "context_relevance": 0.3
-            }
-        },
-        "logical_structure": {
-            "weight": 0.20,
-            "components": {
-                "syntax": 0.3,
-                "coherence": 0.4,
-                "completeness": 0.3
-            }
-        },
-        "evidence_support": {
-            "weight": 0.25,
-            "components": {
-                "symptom_clarity": 0.35,
-                "condition_correlation": 0.35,
-                "temporal_relationship": 0.30
-            }
-        },
-        "consistency": {
-            "weight": 0.15,
-            "components": {
-                "internal_consistency": 0.5,
-                "knowledge_base_alignment": 0.5
-            }
-        },
-        "severity_assessment": {
-            "weight": 0.15,
-            "components": {
-                "severity_clarity": 0.4,
-                "urgency_recognition": 0.3,
-                "risk_assessment": 0.3
-            }
-        }
-    }
-
-    @staticmethod
-    def calculate_confidence(validation_data: Dict) -> Dict[str, Union[float, Dict]]:
-        """Calculate comprehensive confidence score"""
-        confidence_result = {
-            "overall_confidence": 0.0,
-            "component_scores": {},
-            "factor_scores": {},
-            "confidence_level": "",
-            "reliability_indicators": []
-        }
-        
-        for factor, config in ConfidenceScoring.CONFIDENCE_FACTORS.items():
-            factor_score = ConfidenceScoring._calculate_factor_score(
-                validation_data, 
-                factor, 
-                config
-            )
-            confidence_result["factor_scores"][factor] = factor_score
-            confidence_result["overall_confidence"] += factor_score * config["weight"]
-
-        confidence_result["overall_confidence"] = round(confidence_result["overall_confidence"], 3)
-        confidence_result["confidence_level"] = ConfidenceScoring._get_confidence_level(
-            confidence_result["overall_confidence"]
-        )
-        confidence_result["reliability_indicators"] = ConfidenceScoring._get_reliability_indicators(
-            confidence_result["factor_scores"],
-            validation_data
-        )
-
-        return confidence_result
-
-    @staticmethod
-    def _calculate_factor_score(validation_data: Dict, factor: str, config: Dict) -> float:
-        """Calculate score for individual confidence factor"""
-        component_scores = {}
-        for component, weight in config["components"].items():
-            score = ConfidenceScoring._evaluate_component(validation_data, factor, component)
-            component_scores[component] = score * weight
-        return sum(component_scores.values())
-
-    @staticmethod
-    def _evaluate_component(validation_data: Dict, factor: str, component: str) -> float:
-        """Evaluate individual component score"""
-        if factor == "medical_context":
-            if component == "terminology":
-                return ConfidenceScoring._evaluate_terminology(validation_data)
-            elif component == "pattern_match":
-                return ConfidenceScoring._evaluate_patterns(validation_data)
-            elif component == "context_relevance":
-                return ConfidenceScoring._evaluate_context(validation_data)
-        return 0.5
-
-    @staticmethod
-    def _evaluate_terminology(validation_data: Dict) -> float:
-        """Evaluate medical terminology usage"""
-        if "medical_terms" in validation_data:
-            return len(validation_data["medical_terms"]) / 10.0  # Normalize to 0-1
-        return 0.0
-
-    @staticmethod
-    def _evaluate_patterns(validation_data: Dict) -> float:
-        """Evaluate medical pattern matches"""
-        if "patterns_identified" in validation_data:
-            return len(validation_data["patterns_identified"]) / 5.0  # Normalize to 0-1
-        return 0.0
-
-    @staticmethod
-    def _evaluate_context(validation_data: Dict) -> float:
-        """Evaluate medical context relevance"""
-        if "context_score" in validation_data:
-            return validation_data["context_score"]
-        return 0.5
-
-    @staticmethod
-    def _get_confidence_level(score: float) -> str:
-        """Determine confidence level from score"""
-        if score >= 0.9:
-            return "Very High"
-        elif score >= 0.75:
-            return "High"
-        elif score >= 0.6:
-            return "Moderate"
-        elif score >= 0.4:
-            return "Low"
-        else:
-            return "Very Low"
-
-    @staticmethod
-    def _get_reliability_indicators(factor_scores: Dict, validation_data: Dict) -> List[str]:
-        """Generate reliability indicators"""
-        indicators = []
-        for factor, score in factor_scores.items():
-            if score < 0.5:
-                indicators.append(f"Low {factor.replace('_', ' ')} confidence")
-            elif score > 0.8:
-                indicators.append(f"Strong {factor.replace('_', ' ')} confidence")
-
-        if validation_data.get("contradictions"):
-            indicators.append("Contains contradictions")
-        if validation_data.get("missing_context"):
-            indicators.append("Incomplete context")
-        if validation_data.get("emergency_indicators"):
-            indicators.append("Emergency indicators present")
-
-        return indicators
+from logger import get_logger
+from medical_patterns import MedicalPatterns
 
 class LogicTables:
     """Enhanced logic system for medical reasoning and decision validation"""
     
     def __init__(self):
-        self.logger = logging.getLogger('LogicTables')
+        self.logger = get_logger('logic')
         self.variables: Set[str] = set()
         self.expressions: List[str] = []
         self.valid_truths: Set[str] = set()
@@ -222,157 +22,327 @@ class LogicTables:
         
         # Initialize components
         self.patterns = MedicalPatterns()
-        self.confidence_scorer = ConfidenceScoring()
         self.medical_conditions = self._load_medical_conditions()
         self.medical_terminology = self._load_medical_terminology()
         self.symptom_patterns = self._load_symptom_patterns()
         
-        self.setup_logging()
+        # Initialize truth tables
+        self._initialize_truth_tables()
 
-    def setup_logging(self):
-        """Initialize logging system"""
-        log_dir = './memory/logs'
-        os.makedirs(log_dir, exist_ok=True)
-        
-        handler = logging.FileHandler(f'{log_dir}/logic.log')
-        formatter = logging.Formatter('%(asctime)s - %(name)s - %(levelname)s - %(message)s')
-        handler.setFormatter(formatter)
-        self.logger.addHandler(handler)
-        self.logger.setLevel(logging.DEBUG)
+    def _initialize_truth_tables(self):
+        """Initialize truth table structure"""
+        self.truth_tables = {
+            "logical": {
+                "variables": set(),
+                "expressions": [],
+                "valid_truths": set()
+            },
+            "medical": {
+                "symptoms": {},
+                "conditions": {},
+                "relationships": {},
+                "contradictions": []
+            }
+        }
 
     def tautology(self, statement: str) -> bool:
         """Validate if a statement is logically sound"""
-        if not statement or not isinstance(statement, str):
+        try:
+            if not statement or not isinstance(statement, str):
+                self.logger.debug("Invalid statement format", 
+                                extra={'structured_data': {'statement': statement}})
+                return False
+
+            # Check basic logical structure
+            has_context = len(statement.split()) > 3
+            has_medical_terms = self._contains_medical_terms(statement)
+            has_logical_structure = self._check_logical_structure(statement)
+            
+            # Check for contradictions
+            if self._check_contradictions(statement):
+                return False
+
+            result = has_context and has_medical_terms and has_logical_structure
+            
+            self.logger.debug("Tautology check completed", 
+                            extra={'structured_data': {
+                                'statement': statement,
+                                'has_context': has_context,
+                                'has_medical_terms': has_medical_terms,
+                                'has_logical_structure': has_logical_structure,
+                                'result': result
+                            }})
+            
+            return result
+        except Exception as e:
+            self.logger.error("Error in tautology check", 
+                            extra={'structured_data': {
+                                'error': str(e),
+                                'statement': statement
+                            }})
             return False
 
-        has_context = len(statement.split()) > 3
-        has_medical_terms = self._contains_medical_terms(statement)
-        has_logical_structure = self._check_logical_structure(statement)
+    def _check_contradictions(self, statement: str) -> bool:
+        """Check for logical and medical contradictions"""
+        try:
+            # Split statement into components
+            components = self._parse_logical_components(statement)
+            
+            # Check for direct contradictions
+            for i, comp1 in enumerate(components):
+                for comp2 in components[i+1:]:
+                    if self._are_contradictory(comp1, comp2):
+                        self.contradictions.append({
+                            'statement': statement,
+                            'component1': comp1,
+                            'component2': comp2,
+                            'timestamp': datetime.now().isoformat()
+                        })
+                        return True
+            
+            # Check medical contradictions
+            return self._check_medical_contradictions(components)
+            
+        except Exception as e:
+            self.logger.error("Error checking contradictions", 
+                            extra={'structured_data': {'error': str(e)}})
+            return False
 
-        return has_context and has_medical_terms and has_logical_structure
+    def _parse_logical_components(self, statement: str) -> List[str]:
+        """Parse statement into logical components"""
+        components = []
+        current_component = []
+        
+        # Split on logical operators
+        words = statement.lower().split()
+        for word in words:
+            if self._is_logical_operator(word):
+                if current_component:
+                    components.append(' '.join(current_component))
+                    current_component = []
+            current_component.append(word)
+            
+        if current_component:
+            components.append(' '.join(current_component))
+            
+        return components
+
+    def _is_logical_operator(self, word: str) -> bool:
+        """Check if word is a logical operator"""
+        logical_operators = {
+            "and", "or", "not", "if", "then", "because",
+            "therefore", "implies", "since", "while"
+        }
+        return word.lower() in logical_operators
+
+    def _are_contradictory(self, comp1: str, comp2: str) -> bool:
+        """Check if two components are contradictory"""
+        # Check direct negations
+        negation_words = {"not", "no", "never", "without"}
+        comp1_words = set(comp1.lower().split())
+        comp2_words = set(comp2.lower().split())
+        
+        # Check if one component negates the other
+        has_negation = bool(comp1_words.intersection(negation_words) or 
+                          comp2_words.intersection(negation_words))
+        
+        if has_negation:
+            # Remove negation words and compare remaining terms
+            comp1_terms = comp1_words - negation_words
+            comp2_terms = comp2_words - negation_words
+            if comp1_terms.intersection(comp2_terms):
+                return True
+                
+        # Check medical contradictions
+        return self._check_medical_contradiction(comp1, comp2)
+
+    def _check_medical_contradiction(self, comp1: str, comp2: str) -> bool:
+        """Check for medical contradictions between components"""
+        try:
+            # Check temporal contradictions
+            temporal1 = self._extract_temporal_patterns(comp1)
+            temporal2 = self._extract_temporal_patterns(comp2)
+            if temporal1 and temporal2 and self._are_temporal_contradictory(temporal1, temporal2):
+                return True
+            
+            # Check severity contradictions
+            severity1 = self._extract_severity_patterns(comp1)
+            severity2 = self._extract_severity_patterns(comp2)
+            if severity1 and severity2 and self._are_severity_contradictory(severity1, severity2):
+                return True
+            
+            return False
+            
+        except Exception as e:
+            self.logger.error("Error in medical contradiction check", 
+                            extra={'structured_data': {'error': str(e)}})
+            return False
+
+    def _extract_temporal_patterns(self, text: str) -> List[str]:
+        """Extract temporal patterns from text"""
+        patterns = []
+        for category, terms in self.patterns.SYMPTOM_PATTERNS["temporal"].items():
+            if any(term in text.lower() for term in terms):
+                patterns.append(category)
+        return patterns
+
+    def _extract_severity_patterns(self, text: str) -> List[str]:
+        """Extract severity patterns from text"""
+        patterns = []
+        for category, terms in self.patterns.SYMPTOM_PATTERNS["severity"].items():
+            if any(term in text.lower() for term in terms):
+                patterns.append(category)
+        return patterns
+
+    def _are_temporal_contradictory(self, temporal1: List[str], temporal2: List[str]) -> bool:
+        """Check if temporal patterns are contradictory"""
+        contradictions = {
+            ("acute", "chronic"),
+            ("sudden", "persistent"),
+            ("new onset", "long-term")
+        }
+        return any((t1, t2) in contradictions or (t2, t1) in contradictions 
+                  for t1 in temporal1 for t2 in temporal2)
+
+    def _are_severity_contradictory(self, severity1: List[str], severity2: List[str]) -> bool:
+        """Check if severity patterns are contradictory"""
+        contradictions = {
+            ("mild", "severe"),
+            ("minimal", "extreme"),
+            ("light", "critical")
+        }
+        return any((s1, s2) in contradictions or (s2, s1) in contradictions 
+                  for s1 in severity1 for s2 in severity2)
+
+    def _check_medical_contradictions(self, components: List[str]) -> bool:
+        """Check for medical contradictions in components"""
+        try:
+            # Extract medical elements
+            medical_elements = self._extract_medical_elements(' '.join(components))
+            
+            # Check symptom contradictions
+            if self._check_symptom_contradictions(medical_elements.get("symptoms", [])):
+                return True
+            
+            # Check condition contradictions
+            if self._check_condition_contradictions(medical_elements.get("conditions", [])):
+                return True
+            
+            return False
+            
+        except Exception as e:
+            self.logger.error("Error checking medical contradictions", 
+                            extra={'structured_data': {'error': str(e)}})
+            return False
+
+    def _check_symptom_contradictions(self, symptoms: List[str]) -> bool:
+        """Check for contradictory symptoms"""
+        try:
+            for i, symptom1 in enumerate(symptoms):
+                for symptom2 in symptoms[i+1:]:
+                    if (symptom1, symptom2) in self.symptom_relationships.get("contradicts", []):
+                        self.contradictions.append({
+                            'type': 'symptom',
+                            'symptom1': symptom1,
+                            'symptom2': symptom2,
+                            'timestamp': datetime.now().isoformat()
+                        })
+                        return True
+            return False
+        except Exception as e:
+            self.logger.error("Error checking symptom contradictions", 
+                            extra={'structured_data': {'error': str(e)}})
+            return False
+
+    def _check_condition_contradictions(self, conditions: List[str]) -> bool:
+        """Check for contradictory conditions"""
+        try:
+            for i, condition1 in enumerate(conditions):
+                for condition2 in conditions[i+1:]:
+                    if (condition1, condition2) in self.condition_relationships.get("contradicts", []):
+                        self.contradictions.append({
+                            'type': 'condition',
+                            'condition1': condition1,
+                            'condition2': condition2,
+                            'timestamp': datetime.now().isoformat()
+                        })
+                        return True
+            return False
+        except Exception as e:
+            self.logger.error("Error checking condition contradictions", 
+                            extra={'structured_data': {'error': str(e)}})
+            return False
 
     def _contains_medical_terms(self, statement: str) -> bool:
         """Check if statement contains recognized medical terminology"""
-        medical_terms = set(self.medical_conditions.keys())
-        statement_words = set(statement.lower().split())
-        return bool(medical_terms.intersection(statement_words))
+        try:
+            medical_terms = set(self.medical_terminology.keys())
+            statement_words = set(statement.lower().split())
+            matches = medical_terms.intersection(statement_words)
+            
+            self.logger.debug("Medical terms check completed", 
+                            extra={'structured_data': {
+                                'matches_found': list(matches)
+                            }})
+            
+            return bool(matches)
+        except Exception as e:
+            self.logger.error("Error checking medical terms", 
+                            extra={'structured_data': {'error': str(e)}})
+            return False
 
     def _check_logical_structure(self, statement: str) -> bool:
         """Check if statement has valid logical structure"""
-        logical_indicators = ['if', 'then', 'because', 'therefore', 'due to', 'causes']
-        return any(indicator in statement.lower() for indicator in logical_indicators)
-
-    def unify_variables(self, statement1: str, statement2: str) -> bool:
-        """Check if two statements are logically equivalent"""
-        if not statement1 or not statement2:
+        try:
+            logical_indicators = ['if', 'then', 'because', 'therefore', 'implies', 'since']
+            found_indicators = [i for i in logical_indicators if i in statement.lower()]
+            
+            self.logger.debug("Logical structure check completed", 
+                            extra={'structured_data': {
+                                'found_indicators': found_indicators
+                            }})
+            
+            return bool(found_indicators)
+        except Exception as e:
+            self.logger.error("Error checking logical structure", 
+                            extra={'structured_data': {'error': str(e)}})
             return False
-
-        norm1 = self._normalize_statement(statement1)
-        norm2 = self._normalize_statement(statement2)
-
-        if norm1 == norm2:
-            return True
-
-        return self._check_semantic_similarity(norm1, norm2)
-
-    def _normalize_statement(self, statement: str) -> str:
-        """Normalize statement for comparison"""
-        return statement.lower().strip()
-
-    def _check_semantic_similarity(self, stmt1: str, stmt2: str) -> bool:
-        """Check if statements are semantically similar"""
-        words1 = set(stmt1.split())
-        words2 = set(stmt2.split())
-        
-        overlap = words1.intersection(words2)
-        total_words = words1.union(words2)
-        
-        similarity_ratio = len(overlap) / len(total_words) if total_words else 0
-        return similarity_ratio > 0.7
-
-    def validate_conclusion(self, conclusion: str, premises: List[str]) -> Dict[str, Union[bool, str, float]]:
-        """Validate a medical conclusion based on premises"""
-        validation = {
-            "valid": False,
-            "reason": "",
-            "confidence": 0.0
-        }
-
-        if not conclusion or not premises:
-            validation["reason"] = "Missing conclusion or premises"
-            return validation
-
-        if self.tautology(conclusion):
-            validation["valid"] = True
-            validation["confidence"] = self._calculate_confidence(conclusion, premises)
-            validation["reason"] = "Logically sound conclusion"
-        else:
-            validation["reason"] = "Invalid logical structure"
-
-        return validation
-
-    def _calculate_confidence(self, conclusion: str, premises: List[str]) -> float:
-        """Calculate confidence score for conclusion"""
-        if not conclusion or not premises:
-            return 0.0
-
-        premise_factor = min(len(premises) / 3, 1.0)
-        logic_factor = 1.0 if self._check_logical_structure(conclusion) else 0.5
-        medical_factor = 1.0 if self._contains_medical_terms(conclusion) else 0.7
-
-        confidence = (premise_factor + logic_factor + medical_factor) / 3
-        return round(confidence, 2)
 
     def _load_medical_conditions(self) -> Dict:
         """Load medical conditions database"""
         try:
-            with open('medical_conditions.json', 'r') as f:
-                return json.load(f)
-        except FileNotFoundError:
-            return self._create_default_medical_conditions()
+            conditions_file = './memory/medical/conditions.json'
+            if os.path.exists(conditions_file):
+                with open(conditions_file, 'r') as f:
+                    return json.load(f)
+            return {}
+        except Exception as e:
+            self.logger.error("Error loading medical conditions", 
+                            extra={'structured_data': {'error': str(e)}})
+            return {}
 
     def _load_medical_terminology(self) -> Dict:
         """Load medical terminology database"""
         try:
-            with open('medical_terminology.json', 'r') as f:
-                return json.load(f)
-        except FileNotFoundError:
-            return self._create_default_medical_terminology()
+            terminology_file = './memory/medical/terminology.json'
+            if os.path.exists(terminology_file):
+                with open(terminology_file, 'r') as f:
+                    return json.load(f)
+            return {}
+        except Exception as e:
+            self.logger.error("Error loading medical terminology", 
+                            extra={'structured_data': {'error': str(e)}})
+            return {}
 
     def _load_symptom_patterns(self) -> Dict:
         """Load symptom pattern database"""
         try:
-            with open('symptom_patterns.json', 'r') as f:
-                return json.load(f)
-        except FileNotFoundError:
-            return self._create_default_symptom_patterns()
-
-    def _create_default_medical_conditions(self) -> Dict:
-        """Create default medical conditions structure"""
-        return {
-            "general": {
-                "requires_professional": True,
-                "severity": "variable",
-                "common_symptoms": [],
-                "contraindications": [],
-                "related_conditions": []
-            }
-        }
-
-    def _create_default_medical_terminology(self) -> Dict:
-        """Create default medical terminology structure"""
-        return {
-            "symptoms": {},
-            "conditions": {},
-            "procedures": {},
-            "medications": {}
-        }
-
-    def _create_default_symptom_patterns(self) -> Dict:
-        """Create default symptom patterns structure"""
-        return {
-            "acute": [],
-            "chronic": [],
-            "emergency": [],
-            "common": []
-        }
+            patterns_file = './memory/medical/symptom_patterns.json'
+            if os.path.exists(patterns_file):
+                with open(patterns_file, 'r') as f:
+                    return json.load(f)
+            return {}
+        except Exception as e:
+            self.logger.error("Error loading symptom patterns", 
+                            extra={'structured_data': {'error': str(e)}})
+            return {}

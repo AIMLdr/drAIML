@@ -1,21 +1,27 @@
-# memory.py
+# memory.py (c) 2025 Gregory L. Magnusson MIT license
+
 import os
 import json
 from datetime import datetime
 from typing import Dict, List, Optional, Union, Any
-import logging
 from dataclasses import dataclass, asdict
 import shutil
 import hashlib
+from logger import get_logger
+from pathlib import Path
 
 @dataclass
 class DialogEntry:
-    """Structure for dialogue entries"""
+    """Structure for dialogue entries with enhanced medical context"""
     query: str
     response: str
     timestamp: str = None
     context: Dict = None
     medical_context: Dict = None
+    provider: str = None
+    model: str = None
+    validation: Dict = None
+    ethical_checks: List[Dict] = None
     
     def __post_init__(self):
         if self.timestamp is None:
@@ -27,12 +33,16 @@ class DialogEntry:
                 "symptoms": [],
                 "conditions": [],
                 "severity": "unknown",
-                "urgency": "unknown"
+                "urgency": "unknown",
+                "risk_factors": [],
+                "ethical_considerations": []
             }
+        if self.ethical_checks is None:
+            self.ethical_checks = []
 
 @dataclass
 class MedicalDecision:
-    """Structure for medical decisions and recommendations"""
+    """Enhanced structure for medical decisions and recommendations"""
     condition: str
     recommendation: str
     confidence: float
@@ -43,6 +53,10 @@ class MedicalDecision:
     validation: Dict = None
     reasoning: Dict = None
     patient_data: Dict = None
+    provider: str = None
+    model: str = None
+    ethical_validation: Dict = None
+    hippocratic_checks: List[Dict] = None
     
     def __post_init__(self):
         if self.timestamp is None:
@@ -61,438 +75,327 @@ class MedicalDecision:
             self.reasoning = {
                 "premises": [],
                 "conclusions": [],
-                "confidence_factors": {}
+                "confidence_factors": {},
+                "logical_path": [],
+                "ethical_considerations": []
             }
         if self.patient_data is None:
             self.patient_data = {
                 "symptoms": [],
                 "history": [],
-                "risk_factors": []
+                "risk_factors": [],
+                "ethical_factors": []
             }
+        if self.ethical_validation is None:
+            self.ethical_validation = {
+                "validated": False,
+                "principles_checked": [],
+                "ethical_concerns": [],
+                "recommendations": []
+            }
+        if self.hippocratic_checks is None:
+            self.hippocratic_checks = []
 
 class MemoryManager:
     """Enhanced memory management system for drAIML"""
     
+    _instance = None  # Singleton instance
+
+    def __new__(cls):
+        if cls._instance is None:
+            cls._instance = super(MemoryManager, cls).__new__(cls)
+            cls._instance._initialized = False
+        return cls._instance
+
     def __init__(self):
-        self.logger = logging.getLogger('MemoryManager')
+        if self._initialized:
+            return
+            
+        self._initialized = True
+        self.logger = get_logger('memory')
+        
+        # Define simplified memory structure
         self.memory_structure = {
             'root': './memory',
             'folders': {
-                'logs': './memory/logs',
-                'stm': './memory/stm',
-                'ltm': './memory/ltm',
-                'medical': './memory/medical',
-                'analytics': './memory/analytics',
-                'backup': './memory/backup'
-            },
-            'log_files': {
-                'dialog': 'dialog.json',
-                'errors': 'errors.log',
-                'medical_decisions': 'medical_decisions.json',
-                'medical_analytics': 'medical_analytics.json'
+                'errors': './memory/errors',      # Error logs and exceptions
+                'stm': './memory/stm',           # Short-term memory (conversations)
+                'ltm': './memory/ltm',           # Long-term memory (future use)
+                'reasoning': './memory/reasoning' # Decisions, validation, medical
             }
         }
+        
         # Initialize system
-        self.create_memory_folders()
-        self.setup_logging()
-        self.initialize_memory_stores()
+        self._initialize_memory_system()
+        
+        # Start new session
+        self.current_session = {
+            "session_id": datetime.now().strftime("%Y%m%d_%H%M%S"),
+            "start_time": datetime.now().isoformat(),
+            "operations": [],
+            "errors": []
+        }
 
-    def create_memory_folders(self):
-        """Create necessary folder structure"""
+    def _initialize_memory_system(self):
+        """Initialize complete memory system"""
         try:
-            # Create root memory directory
-            os.makedirs(self.memory_structure['root'], exist_ok=True)
+            # Create folder structure
+            self._create_folder_structure()
             
-            # Create all subdirectories
-            for folder in self.memory_structure['folders'].values():
-                os.makedirs(folder, exist_ok=True)
+            # Initialize memory stores
+            self.memory_stores = {
+                'medical_decisions': [],
+                'ethical_validations': [],
+                'session_data': {},
+                'analytics': {},
+                'context': {}
+            }
             
-            self._create_gitignore()
-            return True
+            # Load existing data
+            self._load_existing_memories()
+            
+            # Verify system integrity
+            self._verify_system_integrity()
+            
         except Exception as e:
-            print(f"Error creating memory folders: {e}")
+            self.logger.error("Critical error initializing memory system: %s", str(e))
+            raise
+
+    def _create_folder_structure(self):
+        """Create and verify memory folder structure"""
+        try:
+            created_folders = []
+            failed_folders = []
+            
+            for folder in self.memory_structure['folders'].values():
+                try:
+                    os.makedirs(folder, exist_ok=True)
+                    created_folders.append(folder)
+                except Exception as e:
+                    failed_folders.append((folder, str(e)))
+            
+            self.logger.info("Memory structure created - Success: %d, Failed: %d", 
+                           len(created_folders), len(failed_folders))
+            
+            if failed_folders:
+                raise Exception(f"Failed to create folders: {failed_folders}")
+                
+        except Exception as e:
+            self.logger.error("Error creating folder structure: %s", str(e))
+            raise
+
+    def _verify_system_integrity(self):
+        """Verify memory system integrity"""
+        try:
+            verification_results = {
+                'folders_exist': all(os.path.exists(f) for f in self.memory_structure['folders'].values()),
+                'stores_initialized': all(store for store in self.memory_stores.values() is not None),
+                'session_active': bool(self.current_session)
+            }
+            
+            self.logger.info("System integrity verified - Results: %s", str(verification_results))
+            
+            return all(verification_results.values())
+            
+        except Exception as e:
+            self.logger.error("Error verifying system integrity: %s", str(e))
             return False
 
-    def _create_gitignore(self):
-        """Create .gitignore file for sensitive data"""
-        gitignore_content = """
-        # Sensitive data
-        *.log
-        *.json
-        /backup/*
-        
-        # Except example files
-        !example_*.json
-        """
-        try:
-            with open(os.path.join(self.memory_structure['root'], '.gitignore'), 'w') as f:
-                f.write(gitignore_content.strip())
-        except Exception as e:
-            print(f"Error creating .gitignore: {e}")
-
-    def setup_logging(self):
-        """Initialize comprehensive logging system"""
-        try:
-            log_file = os.path.join(self.memory_structure['folders']['logs'], 'memory_manager.log')
-            
-            logging.basicConfig(
-                level=logging.DEBUG,
-                format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
-                handlers=[
-                    logging.FileHandler(log_file),
-                    logging.StreamHandler()
-                ]
-            )
-            
-            self.logger.debug("Logging initialized successfully")
-        except Exception as e:
-            print(f"Error setting up logging: {e}")
-            logging.basicConfig(
-                level=logging.DEBUG,
-                format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
-            )
-
-    def initialize_memory_stores(self):
-        """Initialize memory storage systems"""
-        self.memory_stores = {
-            'medical_decisions': [],
-            'analytics': {},
-            'cache': {}
-        }
-        self._load_existing_memories()
-
     def _load_existing_memories(self):
-        """Load existing memories from storage"""
+        """Load existing memory data"""
         try:
-            for store_name, store_data in self.memory_stores.items():
-                file_path = os.path.join(
-                    self.memory_structure['folders']['medical'],
-                    f"{store_name}.json"
-                )
-                if os.path.exists(file_path):
-                    with open(file_path, 'r') as f:
+            for store_name in self.memory_stores:
+                store_path = os.path.join(self.memory_structure['folders']['reasoning'], f"{store_name}.json")
+                if os.path.exists(store_path):
+                    with open(store_path, 'r') as f:
                         self.memory_stores[store_name] = json.load(f)
+            
+            self.logger.info("Existing memories loaded - Stores: %s", 
+                           list(self.memory_stores.keys()))
+                           
         except Exception as e:
-            self.logger.error(f"Error loading existing memories: {e}")
+            self.logger.error("Error loading existing memories: %s", str(e))
 
-    def store_medical_decision(self, decision: MedicalDecision):
-        """Store medical decision with comprehensive validation and tracking"""
+    def store_dialog_entry(self, entry: DialogEntry) -> bool:
+        """Store dialog entry with enhanced tracking"""
+        try:
+            entry_dict = asdict(entry)
+            entry_id = hashlib.md5(f"{entry.timestamp}{entry.query}".encode()).hexdigest()
+            
+            # Add metadata
+            entry_dict.update({
+                'entry_id': entry_id,
+                'session_id': self.current_session["session_id"],
+                'storage_timestamp': datetime.now().isoformat()
+            })
+            
+            # Store in STM
+            stm_path = os.path.join(self.memory_structure['folders']['stm'], f"dialog_{entry_id}.json")
+            with open(stm_path, 'w') as f:
+                json.dump(entry_dict, f, indent=2)
+            
+            # Track operation
+            self.current_session["operations"].append({
+                "type": "dialog_entry",
+                "entry_id": entry_id,
+                "timestamp": datetime.now().isoformat()
+            })
+            
+            self.logger.info("Dialog entry stored - ID: %s, Session: %s", 
+                           entry_id, self.current_session["session_id"])
+            
+            return True
+            
+        except Exception as e:
+            self.logger.error("Error storing dialog entry: %s", str(e))
+            return False
+
+    def store_medical_decision(self, decision: MedicalDecision) -> bool:
+        """Store medical decision with validation"""
         try:
             decision_dict = asdict(decision)
+            decision_id = hashlib.md5(
+                f"{decision.timestamp}{decision.condition}{decision.recommendation}".encode()
+            ).hexdigest()
             
             # Add metadata
             decision_dict.update({
-                'storage_timestamp': datetime.now().isoformat(),
-                'decision_id': self._generate_decision_id(decision),
-                'validation_status': self._validate_medical_decision(decision)
+                'decision_id': decision_id,
+                'session_id': self.current_session["session_id"],
+                'storage_timestamp': datetime.now().isoformat()
             })
             
-            # Store in memory
+            # Store decision in reasoning folder
+            decision_path = os.path.join(
+                self.memory_structure['folders']['reasoning'], 
+                f"decision_{decision_id}.json"
+            )
+            with open(decision_path, 'w') as f:
+                json.dump(decision_dict, f, indent=2)
+            
+            # Store in memory store
             self.memory_stores['medical_decisions'].append(decision_dict)
             
-            # Save to file
-            self._save_to_file(
-                'medical_decisions',
-                decision_dict,
-                subfolder='medical'
-            )
+            # Track operation
+            self.current_session["operations"].append({
+                "type": "medical_decision",
+                "decision_id": decision_id,
+                "timestamp": datetime.now().isoformat()
+            })
             
-            # Update analytics
-            self._update_medical_analytics(decision_dict)
-            
-            # Log the decision
-            self.logger.info(f"Stored medical decision: {decision_dict['decision_id']}")
+            self.logger.info("Medical decision stored - ID: %s, Session: %s", 
+                           decision_id, self.current_session["session_id"])
             
             return True
+            
         except Exception as e:
-            self.logger.error(f"Error storing medical decision: {e}")
+            self.logger.error("Error storing medical decision: %s", str(e))
             return False
 
-    def _generate_decision_id(self, decision: MedicalDecision) -> str:
-        """Generate unique ID for decision"""
-        decision_string = f"{decision.timestamp}{decision.condition}{decision.recommendation}"
-        return hashlib.md5(decision_string.encode()).hexdigest()
-
-    def _validate_medical_decision(self, decision: MedicalDecision) -> Dict:
-        """Comprehensive medical decision validation"""
-        validation = {
-            "is_valid": True,
-            "checks": [],
-            "timestamp": datetime.now().isoformat(),
-            "validation_level": "comprehensive"
-        }
-        
-        # Confidence check
-        if decision.confidence < 0.5:
-            validation["checks"].append({
-                "check": "confidence",
-                "result": "low_confidence",
-                "value": decision.confidence,
-                "threshold": 0.5
-            })
-            validation["is_valid"] = False
-        
-        # Urgency check
-        if decision.urgency == "emergency":
-            validation["checks"].append({
-                "check": "urgency",
-                "result": "emergency_case",
-                "value": decision.urgency,
-                "requires_immediate_action": True
-            })
-        
-        # Severity check
-        if decision.severity in ["severe", "critical"]:
-            validation["checks"].append({
-                "check": "severity",
-                "result": "high_severity",
-                "value": decision.severity,
-                "requires_attention": True
-            })
-        
-        # Context validation
-        if not decision.context:
-            validation["checks"].append({
-                "check": "context",
-                "result": "missing_context",
-                "recommendation": "Add medical context"
-            })
-        
-        # Reasoning validation
-        if not decision.reasoning["premises"]:
-            validation["checks"].append({
-                "check": "reasoning",
-                "result": "missing_premises",
-                "recommendation": "Add reasoning premises"
-            })
-        
-        return validation
-
-    def _update_medical_analytics(self, decision: Dict):
-        """Update medical decision analytics"""
-        try:
-            analytics = self.memory_stores.get('analytics', {})
-            
-            # Initialize condition analytics if not exists
-            condition = decision['condition']
-            if condition not in analytics:
-                analytics[condition] = {
-                    'count': 0,
-                    'confidence_sum': 0,
-                    'severity_levels': {},
-                    'urgency_levels': {},
-                    'recommendations': {},
-                    'temporal_distribution': {}
-                }
-            
-            # Update statistics
-            analytics[condition]['count'] += 1
-            analytics[condition]['confidence_sum'] += decision['confidence']
-            
-            # Update severity distribution
-            severity = decision['severity']
-            analytics[condition]['severity_levels'][severity] = \
-                analytics[condition]['severity_levels'].get(severity, 0) + 1
-            
-            # Update urgency distribution
-            urgency = decision['urgency']
-            analytics[condition]['urgency_levels'][urgency] = \
-                analytics[condition]['urgency_levels'].get(urgency, 0) + 1
-            
-            # Update temporal distribution
-            date = decision['timestamp'][:10]  # Get just the date part
-            analytics[condition]['temporal_distribution'][date] = \
-                analytics[condition]['temporal_distribution'].get(date, 0) + 1
-            
-            # Save updated analytics
-            self._save_to_file(
-                'medical_analytics',
-                analytics,
-                subfolder='analytics'
-            )
-            
-        except Exception as e:
-            self.logger.error(f"Error updating medical analytics: {e}")
-
-    def store_in_stm(self, entry: DialogEntry):
-        """Store dialog entry in short-term memory"""
-        try:
-            timestamp = datetime.now().strftime('%Y%m%d%H%M%S')
-            filename = f"memory_{timestamp}.json"
-            filepath = os.path.join(self.memory_structure['folders']['stm'], filename)
-            
-            entry_dict = asdict(entry)
-            
-            with open(filepath, 'w') as f:
-                json.dump(entry_dict, f, indent=2)
-            
-            self.logger.debug(f"Stored dialog entry in STM: {filepath}")
-            return True
-        except Exception as e:
-            self.logger.error(f"Error storing in STM: {e}")
-            return False
-
-    def save_conversation_memory(self, dialog_data: Dict):
-        """Save conversation to memory"""
-        try:
-            filepath = os.path.join(
-                self.memory_structure['folders']['logs'],
-                self.memory_structure['log_files']['dialog']
-            )
-            
-            conversations = self._load_json_file(filepath, default=[])
-            
-            if 'timestamp' not in dialog_data:
-                dialog_data['timestamp'] = datetime.now().isoformat()
-            
-            conversations.append(dialog_data)
-            
-            with open(filepath, 'w') as f:
-                json.dump(conversations, f, indent=2)
-            
-            self.logger.debug(f"Saved conversation memory: {dialog_data.get('timestamp')}")
-            return True
-        except Exception as e:
-            self.logger.error(f"Error saving conversation memory: {e}")
-            return False
-
-    def get_medical_decision_history(self, 
-                                   condition: Optional[str] = None,
-                                   start_date: Optional[str] = None,
-                                   end_date: Optional[str] = None) -> List[Dict]:
-        """Retrieve medical decision history with filters"""
+    def get_medical_decision_history(
+        self,
+        condition: Optional[str] = None,
+        start_date: Optional[str] = None,
+        end_date: Optional[str] = None
+    ) -> List[Dict]:
+        """Get medical decision history with filters"""
         try:
             decisions = self.memory_stores['medical_decisions']
             
             if condition:
                 decisions = [d for d in decisions if d['condition'] == condition]
-            
             if start_date:
                 decisions = [d for d in decisions if d['timestamp'] >= start_date]
-                
             if end_date:
                 decisions = [d for d in decisions if d['timestamp'] <= end_date]
-                
+            
+            self.logger.info("Retrieved medical decision history - Condition: %s, Count: %d", 
+                           condition or "All", len(decisions))
+            
             return decisions
             
         except Exception as e:
-            self.logger.error(f"Error retrieving medical decision history: {e}")
+            self.logger.error("Error retrieving medical decision history: %s", str(e))
             return []
 
-    def get_medical_analytics(self, condition: Optional[str] = None) -> Dict:
-        """Get medical decision analytics"""
+    def cleanup_old_memories(self, days: int = 30) -> bool:
+        """Archive old memory files to LTM"""
         try:
-            analytics = self.memory_stores['analytics']
+            cutoff_time = datetime.now().timestamp() - (days * 24 * 60 * 60)
+            archived_files = []
             
-            if condition:
-                return analytics.get(condition, {})
-            
-            return analytics
-            
-        except Exception as e:
-            self.logger.error(f"Error retrieving medical analytics: {e}")
-            return {}
-
-    def _save_to_file(self, name: str, data: Any, subfolder: str = None):
-        """Save data to file with backup"""
-        try:
-            folder = self.memory_structure['folders'].get(subfolder, self.memory_structure['folders']['medical'])
-            filepath = os.path.join(folder, f"{name}.json")
-            
-            # Create backup
-            if os.path.exists(filepath):
-                backup_path = os.path.join(
-                    self.memory_structure['folders']['backup'],
-                    f"{name}_{datetime.now().strftime('%Y%m%d%H%M%S')}.json"
-                )
-                shutil.copy2(filepath, backup_path)
-            
-            # Save new data
-            with open(filepath, 'w') as f:
-                json.dump(data, f, indent=2)
-                
-        except Exception as e:
-            self.logger.error(f"Error saving to file: {e}")
-            raise
-
-    def _load_json_file(self, filepath: str, default: Union[List, Dict] = None) -> Union[List, Dict]:
-        """Helper method to load JSON file"""
-        try:
-            if os.path.exists(filepath):
-                with open(filepath, 'r') as f:
-                    return json.load(f)
-            return default if default is not None else []
-        except json.JSONDecodeError:
-            self.logger.error(f"Error decoding JSON from {filepath}")
-            return default if default is not None else []
-
-    def cleanup_old_memories(self, days_threshold: int = 30):
-        """Clean up old memory files"""
-        try:
-            current_time = datetime.now()
-            
-            for folder in ['stm', 'ltm']:
+            for folder in ['stm', 'reasoning']:
                 folder_path = self.memory_structure['folders'][folder]
-                for filename in os.listdir(folder_path):
-                    file_path = os.path.join(folder_path, filename)
-                    file_time = datetime.fromtimestamp(os.path.getctime(file_path))
-                    
-                    if (current_time - file_time).days > days_threshold:
-                        # Backup before deletion
-                        backup_path = os.path.join(
-                            self.memory_structure['folders']['backup'],
-                            f"archived_{filename}"
-                        )
-                        shutil.move(file_path, backup_path)
-                        self.logger.info(f"Archived old memory file: {file_path}")
-                        
+                if os.path.exists(folder_path):
+                    for filename in os.listdir(folder_path):
+                        filepath = os.path.join(folder_path, filename)
+                        if os.path.isfile(filepath):
+                            file_time = os.path.getmtime(filepath)
+                            if file_time < cutoff_time:
+                                archive_path = os.path.join(
+                                    self.memory_structure['folders']['ltm'],
+                                    f"archived_{filename}_{datetime.now().strftime('%Y%m%d%H%M%S')}"
+                                )
+                                shutil.move(filepath, archive_path)
+                                archived_files.append(filename)
+            
+            self.logger.info("Cleaned up old memories - Archived: %d files", 
+                           len(archived_files))
+            
             return True
+            
         except Exception as e:
-            self.logger.error(f"Error cleaning up memories: {e}")
+            self.logger.error("Error cleaning up memories: %s", str(e))
             return False
 
-# Create global instance
-try:
-    memory_manager = MemoryManager()
-except Exception as e:
-    print(f"Error initializing MemoryManager: {e}")
-    memory_manager = None
+# Global instance
+memory_manager = MemoryManager()
 
 # Convenience functions
-def create_memory_folders():
+def create_memory_folders() -> bool:
     """Create memory folder structure"""
+    try:
+        return bool(memory_manager)
+    except Exception as e:
+        print(f"Error creating memory folders: {e}")
+        return False
+
+def store_dialog_entry(entry: DialogEntry) -> bool:
+    """Store dialog entry"""
     if memory_manager:
-        return memory_manager.create_memory_folders()
+        return memory_manager.store_dialog_entry(entry)
     return False
 
-def store_in_stm(entry: DialogEntry):
-    """Store entry in short-term memory"""
-    if memory_manager:
-        return memory_manager.store_in_stm(entry)
-    return False
-
-def save_conversation_memory(dialog_data: Dict):
-    """Save conversation memory"""
-    if memory_manager:
-        return memory_manager.save_conversation_memory(dialog_data)
-    return False
-
-def store_medical_decision(decision: MedicalDecision):
+def store_medical_decision(decision: MedicalDecision) -> bool:
     """Store medical decision"""
     if memory_manager:
         return memory_manager.store_medical_decision(decision)
     return False
 
-def get_medical_decision_history(condition: Optional[str] = None,
-                               start_date: Optional[str] = None,
-                               end_date: Optional[str] = None) -> List[Dict]:
+def get_medical_decision_history(
+    condition: Optional[str] = None,
+    start_date: Optional[str] = None,
+    end_date: Optional[str] = None
+) -> List[Dict]:
     """Get medical decision history"""
     if memory_manager:
         return memory_manager.get_medical_decision_history(condition, start_date, end_date)
     return []
 
-def get_medical_analytics(condition: Optional[str] = None) -> Dict:
-    """Get medical analytics"""
+def cleanup_memories(days: int = 30) -> bool:
+    """Clean up old memories"""
     if memory_manager:
-        return memory_manager.get_medical_analytics(condition)
-    return {}
+        return memory_manager.cleanup_old_memories(days)
+    return False
+
+# Module exports
+__all__ = [
+    'DialogEntry',
+    'MedicalDecision',
+    'MemoryManager',
+    'create_memory_folders',
+    'store_dialog_entry',
+    'store_medical_decision',
+    'get_medical_decision_history',
+    'cleanup_memories'
+]

@@ -1,102 +1,238 @@
-# draiml.py
+# draiml.py (c) 2024 Gregory L. Magnusson MIT license
+
+import sys
+from pathlib import Path
+sys.path.append(str(Path(__file__).parent))
+
 import streamlit as st
 import time
 from datetime import datetime
 from socratic import SocraticReasoning
 from chatter import GPT4o, GroqModel, TogetherModel, OllamaHandler
 from openmind import OpenMind
-from memory import create_memory_folders, store_in_stm, DialogEntry
-import os
+from config import model_config
+from logger import get_logger
+
+# Initialize logger
+logger = get_logger('draiml')
+
+# Load external CSS
+def load_css(css_file: str):
+    with open(css_file) as f:
+        st.markdown(f'<style>{f.read()}</style>', unsafe_allow_html=True)
+
+# Load CSS
+load_css('styles.css')
 
 # Initialize session state
-if 'history' not in st.session_state:
-    st.session_state.history = []
-if 'premises' not in st.session_state:
-    st.session_state.premises = []
-if 'conclusions' not in st.session_state:
-    st.session_state.conclusions = []
+if "messages" not in st.session_state:
+    st.session_state.messages = []
 if 'provider' not in st.session_state:
     st.session_state.provider = None
 if 'selected_model' not in st.session_state:
     st.session_state.selected_model = None
-if 'ollama_instance' not in st.session_state:
-    st.session_state.ollama_instance = None
+if 'model_capabilities' not in st.session_state:
+    st.session_state.model_capabilities = []
+if 'cost_tracking' not in st.session_state:
+    st.session_state.cost_tracking = {"total": 0.0, "session": 0.0}
+
+# Initialize model instances
+if 'model_instances' not in st.session_state:
+    st.session_state.model_instances = {
+        'ollama': None,
+        'groq': None,
+        'together': None,
+        'openai': None
+    }
+
+if 'openmind' not in st.session_state:
+    st.session_state.openmind = OpenMind()
 
 def check_ollama_status():
-    """Check if Ollama is running and return available models"""
-    if not st.session_state.ollama_instance:
-        st.session_state.ollama_instance = OllamaHandler()
+    """Check Ollama installation and available models"""
+    if not st.session_state.model_instances['ollama']:
+        st.session_state.model_instances['ollama'] = OllamaHandler()
     
-    if st.session_state.ollama_instance.check_installation():
-        models = st.session_state.ollama_instance.list_models()
+    if st.session_state.model_instances['ollama'].check_installation():
+        models = st.session_state.model_instances['ollama'].list_models()
         return True, models
     return False, []
 
-def initialize_agi(openmind):
-    """Initialize AI model based on selected provider"""
-    provider = st.session_state.provider
-    
-    if not provider:
-        st.info("Please select an AI Provider")
-        return None
-    
-    if provider == "Together":
-        key = openmind.get_api_key('together')
-        if key:
-            return TogetherModel(key)
-        else:
-            st.error("Together API key not found")
+def initialize_model(provider: str):
+    """Initialize or retrieve model instance"""
+    try:
+        if not provider:
+            st.info("select an AI Provider")
             return None
-            
-    elif provider == "Groq":
-        key = openmind.get_api_key('groq')
-        if key:
-            return GroqModel(key)
-        else:
-            st.error("Groq API key not found")
-            return None
-            
-    elif provider == "Ollama":
-        if not st.session_state.ollama_instance:
-            st.session_state.ollama_instance = OllamaHandler()
-            
-        if st.session_state.ollama_instance.check_installation():
-            available_models = st.session_state.ollama_instance.list_models()
-            if available_models:
-                # Model selection in sidebar
-                selected_model = st.session_state.selected_model
-                if not selected_model:
-                    st.info("Please select an Ollama model to continue")
-                    return None
+        
+        if provider == "Together":
+            key = st.session_state.openmind.get_api_key('together')
+            if key:
+                if not st.session_state.model_instances['together']:
+                    instance = TogetherModel(key)
+                    st.session_state.model_instances['together'] = instance
+                return st.session_state.model_instances['together']
+            else:
+                st.error("Together API key not found")
+                return None
                 
-                if st.session_state.ollama_instance.select_model(selected_model):
-                    return st.session_state.ollama_instance
-                else:
-                    st.error(st.session_state.ollama_instance.get_last_error())
+        elif provider == "Groq":
+            key = st.session_state.openmind.get_api_key('groq')
+            if key:
+                try:
+                    if not st.session_state.model_instances['groq']:
+                        st.session_state.model_instances['groq'] = GroqModel(key)
+                    return st.session_state.model_instances['groq']
+                except Exception as e:
+                    st.error(f"Error initializing Groq: {str(e)}")
                     return None
             else:
-                st.error("No Ollama models found. Please pull a model first.")
+                st.error("Groq API key not found")
                 return None
-        else:
-            st.error("Ollama is not running. Please start Ollama service.")
-            return None
-            
-    return None
+                
+        elif provider == "OpenAI":
+            key = st.session_state.openmind.get_api_key('openai')
+            if key:
+                try:
+                    if not st.session_state.model_instances['openai']:
+                        st.session_state.model_instances['openai'] = GPT4o(key)
+                    return st.session_state.model_instances['openai']
+                except Exception as e:
+                    st.error(f"Error initializing OpenAI: {str(e)}")
+                    return None
+            else:
+                st.error("OpenAI API key not found")
+                return None
+                
+        elif provider == "Ollama":
+            if not st.session_state.model_instances['ollama']:
+                st.session_state.model_instances['ollama'] = OllamaHandler()
+                
+            if st.session_state.model_instances['ollama'].check_installation():
+                available_models = st.session_state.model_instances['ollama'].list_models()
+                if available_models:
+                    if not st.session_state.selected_model:
+                        st.info("Please select an Ollama model to continue")
+                        return None
+                    
+                    if st.session_state.model_instances['ollama'].select_model(st.session_state.selected_model):
+                        return st.session_state.model_instances['ollama']
+                    else:
+                        st.error(st.session_state.model_instances['ollama'].get_last_error())
+                        return None
+                else:
+                    st.error("Ollama model not found. Please pull a model first.")
+                    return None
+            else:
+                st.error("Ollama is not running. start Ollama service.")
+                return None
+                
+        return None
+    except Exception as e:
+        logger.error(f"Error initializing model: {e}")
+        st.error(f"Error initializing model: {str(e)}")
+        return None
+
+def update_cost_tracking(response_length: int):
+    """Update cost tracking based on current model and response length"""
+    try:
+        if st.session_state.provider and st.session_state.selected_model:
+            model_info = model_config.get_model_info(
+                st.session_state.provider.lower(),
+                st.session_state.selected_model
+            )
+            if model_info and 'cost' in model_info:
+                cost_str = model_info['cost']
+                if '/1M tokens' in cost_str:
+                    base_cost = float(cost_str.split('$')[1].split('/')[0])
+                    tokens = response_length / 4  # Approximate tokens
+                    cost = (tokens / 1000000) * base_cost
+                elif '/1K tokens' in cost_str:
+                    base_cost = float(cost_str.split('$')[1].split('/')[0])
+                    tokens = response_length / 4
+                    cost = (tokens / 1000) * base_cost
+                else:
+                    cost = 0.0
+                
+                st.session_state.cost_tracking["session"] += cost
+                st.session_state.cost_tracking["total"] += cost
+    except Exception as e:
+        logger.error(f"Error updating cost tracking: {e}")
+
+def display_model_info():
+    """Display current model information"""
+    if st.session_state.provider and st.session_state.selected_model:
+        model_info = model_config.get_model_info(
+            st.session_state.provider.lower(),
+            st.session_state.selected_model
+        )
+        if model_info:
+            st.sidebar.markdown("### Model Information")
+            st.sidebar.markdown(f"""
+            <div class="model-info">
+                <p><strong>Model:</strong> {model_info['name']}</p>
+                <p><strong>Developer:</strong> {model_info['developer']}</p>
+                <p><strong>Max Tokens:</strong> {model_info['tokens']}</p>
+                <p><strong>Cost:</strong> {model_info['cost']}</p>
+                <div><strong>Capabilities:</strong></div>
+                {''.join([f'<span class="capability-tag">{cap}</span>' for cap in model_info.get('capabilities', [])])}
+            </div>
+            """, unsafe_allow_html=True)
+
+def process_message(prompt):
+    """Process and generate response to user message"""
+    if not st.session_state.provider:
+        st.warning("select an AI Provider first")
+        return
+        
+    model = initialize_model(st.session_state.provider)
+    if not model:
+        return
+
+    st.session_state.messages.append({"role": "user", "content": prompt})
+    
+    with st.chat_message("user"):
+        st.markdown(prompt)
+
+    with st.chat_message("assistant"):
+        with st.spinner("Thinking..."):
+            try:
+                response = model.generate_response(prompt)
+                
+                if st.session_state.provider == "Ollama" and model.get_last_error():
+                    st.error(model.get_last_error())
+                    return
+                
+                st.markdown(response)
+                update_cost_tracking(len(response))
+                
+                st.session_state.messages.append({"role": "assistant", "content": response})
+                
+            except Exception as e:
+                logger.error(f"Error generating response: {e}")
+                st.error(f"Error generating response: {str(e)}")
 
 def main():
     st.title("drAIML - Medical AI Consultant")
-    openmind = OpenMind()
+    
+    # Display cost tracker
+    st.markdown(f"""
+        <div class="cost-tracker">
+            Session Cost: ${st.session_state.cost_tracking['session']:.4f}<br>
+            Total Cost: ${st.session_state.cost_tracking['total']:.4f}
+        </div>
+    """, unsafe_allow_html=True)
     
     with st.sidebar:
         st.header("AI Configuration")
         
-        # Check Ollama status and show indicator if running
+        # Check Ollama status
         ollama_running, ollama_models = check_ollama_status()
         if ollama_running:
             st.markdown("""
-                <div style='display: flex; align-items: center; margin-bottom: 1rem;'>
-                    <span style='color: #00ff00; font-size: 1.5em; margin-right: 0.5rem;'>●</span>
-                    <span style='color: #666666;'>Ollama Running</span>
+                <div class="api-key-status">
+                    <span class="checkmark">●</span>
+                    <span class="text">Ollama Running</span>
                 </div>
                 """, unsafe_allow_html=True)
             if ollama_models:
@@ -106,103 +242,83 @@ def main():
         previous_provider = st.session_state.provider
         st.session_state.provider = st.selectbox(
             "Select AI Provider", 
-            [None, "Together", "Groq", "Ollama"],
+            [None, "OpenAI", "Together", "Groq", "Ollama"],
             format_func=lambda x: "Select Provider" if x is None else x
         )
         
-        # Reset model selection when provider changes
         if previous_provider != st.session_state.provider:
             st.session_state.selected_model = None
+            st.session_state.model_capabilities = []
         
-        # Show appropriate configuration based on provider
-        if st.session_state.provider == "Ollama":
-            if ollama_models:
-                st.session_state.selected_model = st.selectbox(
-                    "Select Ollama Model",
-                    options=ollama_models,
-                    key='ollama_model_select'
-                )
-                
-                # Show model info if selected
-                if st.session_state.selected_model:
-                    model_info = st.session_state.ollama_instance.get_model_info(st.session_state.selected_model)
-                    if 'error' not in model_info:
-                        st.caption("Model Information:")
-                        st.json(model_info)
+        # Model selection based on provider
+        if st.session_state.provider:
+            if st.session_state.provider == "Ollama":
+                if ollama_models:
+                    st.session_state.selected_model = st.selectbox(
+                        "Select Ollama Model",
+                        options=ollama_models,
+                        key='ollama_model_select'
+                    )
+            else:
+                provider_models = model_config.get_provider_models(st.session_state.provider.lower())
+                if provider_models:
+                    st.session_state.selected_model = st.selectbox(
+                        f"Select {st.session_state.provider} Model",
+                        options=list(provider_models.keys()),
+                        format_func=lambda x: f"{provider_models[x]['name']} ({provider_models[x]['cost']})",
+                        key=f"{st.session_state.provider.lower()}_model_select"
+                    )
+                    
+                    # Display API key status and input
+                    if st.session_state.provider in ["OpenAI", "Together", "Groq"]:
+                        # Check if API key exists
+                        existing_key = st.session_state.openmind.get_api_key(
+                            st.session_state.provider.lower()
+                        )
+                        
+                        # Show API key status
+                        if existing_key:
+                            st.markdown(f"""
+                                <div class="api-key-status">
+                                    <span class="checkmark">✓</span>
+                                    <span class="text">{st.session_state.provider} API Key Stored</span>
+                                </div>
+                                """, unsafe_allow_html=True)
+                        
+                        # API key input
+                        api_key = st.text_input(
+                            f"{st.session_state.provider} API Key",
+                            type="password",
+                            key=f"{st.session_state.provider.lower()}_api_key"
+                        )
+                        
+                        if api_key:
+                            st.session_state.openmind.save_api_key(
+                                st.session_state.provider.lower(), 
+                                api_key
+                            )
+                            # Force refresh to show checkmark
+                            st.experimental_rerun()
         
-        elif st.session_state.provider in ["Together", "Groq"]:
-            api_key = st.text_input(f"{st.session_state.provider} API Key", type="password")
-            if api_key:
-                openmind.save_api_key(st.session_state.provider.lower(), api_key)
+        # Display model information
+        display_model_info()
 
-        # View options with default unchecked
-        st.header("View Sections")
-        show_oath = st.checkbox("Show Oath of Dr. AIML", value=False)
-        show_prompt = st.checkbox("Show Dr. AIML Prompt", value=False)
-
-    # Load and display Oath if checkbox is checked
-    if show_oath:
-        oath_text = openmind.load_oath()
-        if oath_text:
-            st.header("The Oath of Dr. AIML")
-            st.markdown(oath_text)
-        else:
-            st.error("Oath file not found. Please ensure 'oath.txt' is in the same directory.")
+    # Chat interface
+    chat_container = st.container()
     
-    # Load and display Prompt if checkbox is checked
-    if show_prompt:
-        prompt_text = openmind.load_prompt()
-        if prompt_text:
-            st.header("Dr. AIML: The Apex of Autonomous Healthcare")
-            st.markdown(prompt_text)
-        else:
-            st.error("Prompt file not found. Please ensure 'prompt.txt' is in the same directory.")
+    with chat_container:
+        for message in st.session_state.messages:
+            with st.chat_message(message["role"]):
+                st.markdown(message["content"])
 
-    # Main consultation interface
-    st.header("Consult with Dr. AIML")
-    user_input = st.text_input("Please describe your symptoms or ask a health question:")
+    # Chat input
+    prompt = st.chat_input(
+        "describe your symptoms or ask a health question...",
+        key="chat_input"
+    )
     
-    if user_input:
-        if not st.session_state.provider:
-            st.warning("Please select an AI Provider first")
-            return
-            
-        # Initialize the AI model
-        agi = initialize_agi(openmind)
-        if agi is None:
-            if st.session_state.provider == "Ollama" and not st.session_state.selected_model:
-                st.info("Please select an Ollama model to continue")
-            return
-        
-        with st.spinner("Dr. AIML is analyzing your input..."):
-            try:
-                response = agi.generate_response(user_input)
-                
-                if st.session_state.provider == "Ollama" and st.session_state.ollama_instance.get_last_error():
-                    st.error(st.session_state.ollama_instance.get_last_error())
-                    return
-                
-                st.write(response)
-                
-                # Store the conversation history
-                st.session_state.history.append({
-                    'user': user_input,
-                    'drAIML': response,
-                    'timestamp': datetime.now().isoformat(),
-                    'model': st.session_state.selected_model if st.session_state.provider == "Ollama" else st.session_state.provider
-                })
-            except Exception as e:
-                st.error(f"Error generating response: {str(e)}")
-
-    # Display conversation history
-    if st.session_state.history:
-        st.header("Conversation History")
-        for entry in st.session_state.history:
-            st.write(f"You: {entry['user']}")
-            st.write(f"Dr. AIML: {entry['drAIML']}")
-            st.write(f"Model: {entry['model']}")
-            st.write(f"Time: {entry['timestamp']}")
-            st.markdown("---")
+    if prompt:
+        process_message(prompt)
 
 if __name__ == "__main__":
     main()
