@@ -1,4 +1,4 @@
-# chatter.py (c) 2024 Gregory L. Magnusson MIT license
+# chatter.py (c) 2025 Gregory L. Magnusson MIT license
 
 import os
 import logging
