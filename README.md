@@ -39,7 +39,9 @@ pip install -r requirements.txt
 ```
 ```text
 .env
-TOGETHER_API_KEY=your_together_key
+TOGETHER_API_KEY='changemanuallyoraddfromtheui'
+GROQ_API_KEY='automaticallyaddedfromthedraimlui'
+OPENAI_API_KEY='yourapikeygetsaddedfromthedraimlui'
 ```
 ```bash
 streamlit run draiml.py
