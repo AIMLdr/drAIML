@@ -1,4 +1,4 @@
-# draiml.py (c) 2024 Gregory L. Magnusson MIT license
+# draiml.py (c) 2025 Gregory L. Magnusson MIT license
 
 import sys
 from pathlib import Path
