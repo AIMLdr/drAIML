@@ -18,10 +18,10 @@ drAIML is a medical AI consultation system that integrates multiple large langua
 
   **Chatter System (`chatter.py`)**
    - Model interface implementations:
-     - OpenAI GPT-4
-     - Groq
-     - Together.ai
-     - Ollama (local models)
+     - <a href="https://platform.openai.com/docs/overview">OpenAI GPT-4</a>
+     - <a href="https://console.groq.com/keys">Groq</a>
+     - <a href="https://api.together.ai/settings/api-keys">Together.ai</a>
+     - <a href="https://ollama.com/search">Ollama (local models)</a>
    - Asynchronous response generation
    - Error handling and timeout management
    - System prompt integration
