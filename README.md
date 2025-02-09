@@ -122,7 +122,7 @@ streamlit run draiml.py
 ```
 
 
-NOTE: the streamlit app demo version <a href="https://aimldr.streamlit.app">streamlet demo</a> is web based requiring a <a href="https://api.together.ai/">together.ai</a> API key<br /> <a href="https://console.groq.com/keys">groq</a> API key or an <a href="https://platform.openai.com/docs/api-reference/introduction">openai</a> API key
+NOTE: the app demo version of <a href="https://aimldr.streamlit.app">drAIML</a> v1 is web based requiring a <a href="https://api.together.ai/">together.ai</a> API key<br /> <a href="https://console.groq.com/keys">groq</a> API key or an <a href="https://platform.openai.com/docs/api-reference/introduction">openai</a> API key
 # For private healthcare consultation with drAIML
 install <a href="https://ollama.com/download">ollama</a> then ```ollama list ``` ```ollama run yourmodelname``` from your <br />
 drAIML will see your running <a href="https://ollama.com/search">ollama model</a> and then choose the running model from the ```ollama list``` of <a href="https://ollama.com/search">models</a> you have installed.
