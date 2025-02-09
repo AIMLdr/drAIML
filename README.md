@@ -1,5 +1,5 @@
 # drAIML
-machine learning medical diagnosis consultation
+augmented intelligence machine learning medical diagnosis healthcare consultation agent
 
 ```text
 draiml/
@@ -24,12 +24,12 @@ draiml/
     ├── stm/                 # Short-term memory
     └── ltm/                 # Long-term memory
 ```
-Introduction to drAIML - Medical AI Consultant
+Introduction to drAIML - Medical AI HealthCare consultant
 
-drAIML is an advanced medical AI consultation system leveraging (A)rtificial (I)ntelligence (M)achine (L)earning technology to provide accurate, ethical, and compassionate medical information to patients as participants. Designed to be an autonomous medical expert, drAIML integrates multiple AI models, ethical medical practices, and sophisticated reasoning systems to deliver personalized medical consultations while maintaining strict ethical guidelines and ensuring patient safety.
+<a href="https://aimldr.streamlit.app/">drAIML</a> is an advanced medical AI consultation system leveraging (A)rtificial (I)ntelligence (M)achine (L)earning technology to provide accurate, ethical, and compassionate medical information to patients as participants. Designed to be an autonomous medical expert, drAIML integrates multiple AI models, ethical medical practices, and sophisticated reasoning systems to deliver personalized medical consultations while maintaining strict ethical guidelines and ensuring patient safety.
 Purpose
 
-The primary purpose of drAIML is to bridge the gap between medical expertise and accessibility. By harnessing the power of AI, drAIML aims to provide users with immediate access to medical insights, symptom analysis, and treatment recommendations, especially in situations where professional medical advice may not be readily available. It is engineered to act as a trustworthy medical assistant that adheres to the highest standards of medical ethics and confidentiality.
+The primary purpose of <a href="https://aimldr.streamlit.app/">drAIML</a> is to bridge the gap between medical expertise and accessibility. By harnessing the power of AI, drAIML aims to provide users with immediate access to medical insights, symptom analysis, and treatment recommendations, especially in situations where professional medical advice may not be readily available. <a href="https://aimldr.streamlit.app/">drAIML</a> is engineered to act as a trustworthy medical assistant that adheres to the highest standards of medical ethics and confidentiality.
 Key Features
 
     Multiple AI Model Integration: Supports various AI providers, including OpenAI's GPT-4, Groq models, Together.ai, and local models through Ollama. This flexibility ensures robustness and availability.
@@ -64,7 +64,7 @@ Core Values
 
     Accountability: Taking responsibility for the information provided and ensuring that it aligns with medical best practices.
 
-How It Works
+# How drAIML works
 
 drAIML operates through a user-friendly interface where users can describe their symptoms or ask health-related questions. The system processes the input using the selected AI model, applies ethical reasoning and safety checks, and generates a response. This response is then validated against medical guidelines and ethical standards before being presented to the user.
 
@@ -93,6 +93,7 @@ To use drAIML, participants select their preferred AI provider, configure any ne
 Contributions and Further Development
 
 drAIML is an open-source project that welcomes contributions from the developer and medical communities. By collaborating, we aim to enhance the system's capabilities, expand its knowledge base, and improve its effectiveness in providing ethical and accurate medical consultations.
+
 Disclaimer
 While drAIML strives to provide accurate and helpful medical information, it is not a substitute for professional medical advice, diagnosis, or treatment. Users are encouraged to consult qualified healthcare providers for any medical concerns or conditions. drAIML is designed to augment medical advice useful for both patients and health care professionals for accurate assessments as diganosis.
 
